@@ -7,6 +7,7 @@ import Data.Aeson.Types
 import Data.Attoparsec.Number
 import Data.Conduit
 import Data.Default
+import Data.Maybe
 import Network.HTTP.Conduit
 
 -- TODO
@@ -53,6 +54,32 @@ instance FromJSON User where
 		<*> v .: "updated_at"
 		<*> parseJSON o
 	parseJSON o = typeMismatch "user object" o
+
+data Burner = Front | Back deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data DiffParameters = DiffParameters
+	{ since  :: Integer
+	, skinny :: Bool
+	} deriving (Eq, Ord, Show, Read)
+data UserParameters = UserParameters
+	{ userToGet       :: Maybe String
+	, goalsFilter     :: Maybe Burner
+	, associations    :: Bool
+	, diffSince       :: Maybe DiffParameters
+	, datapointsCount :: Maybe Integer
+	} deriving (Eq, Ord, Show, Read)
+
+instance Default DiffParameters where def = DiffParameters def False
+instance Default UserParameters where def = UserParameters def def False def def
+
+-- TODO: is String really the right type to use here...? probably ought to return Request m -> Request m or some such thing
+user :: UserParameters -> String
+user p
+	=  url ("users/" ++ fromMaybe "me" (userToGet p))
+	++ case goalsFilter p of
+		Nothing -> ""
+		Just Front -> "&goals_filter=front"
+		Just Back  -> "&goals_filter=back"
+	-- TODO: figure out a good style + add all the other parameters
 
 -- TODO
 data Goal = Goal deriving (Eq, Ord, Show, Read)
