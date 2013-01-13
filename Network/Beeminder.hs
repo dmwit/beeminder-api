@@ -8,7 +8,7 @@ import Network.HTTP.Conduit
 
 -- TODO
 import System.IO.Unsafe
-token = unsafePerformIO (init `fmap` readFile "dmwit_token")
+token = unsafePerformIO (init `fmap` readFile "token")
 
 server   = "https://www.beeminder.com/"
 basePath = "api/v1/"
@@ -35,16 +35,11 @@ instance FromJSON UserGoals where
 -- TODO: the implementation doesn't match the spec: it has "id" and
 -- "has_authorized_fitbit" fields. I wonder what they're for!
 instance FromJSON User where
-	parseJSON (Object v) = do
-		un <- v .: "username"
-		tz <- v .: "timezone"
-		ua <- v .: "updated_at"
-		gs <- v .: "goals"
-		return User
-			{ username  = un
-			, timezone  = tz
-			, updatedAt = ua
-			, goals     = gs
-			}
+	parseJSON (Object v) = User
+		<$> v .: "username"
+		<*> v .: "timezone"
+		<*> v .: "updated_at"
+		<*> v .: "goals"
 
+test :: IO (Maybe User)
 test = decode <$> simpleHttp (url "users/me")
