@@ -3,6 +3,7 @@ module Network.Beeminder where
 
 import Control.Applicative
 import Data.Aeson
+import Data.Aeson.Types
 import Data.Attoparsec.Number
 import Network.HTTP.Conduit
 
@@ -35,6 +36,7 @@ instance FromJSON UserGoals where
 		slugs  = Slugs  <$> v .: "goals"
 		hashes = Hashes <$> v .: "goals"
 		diff   = Diff   <$> v .: "goals" <*> v .: "deleted_goals"
+	parseJSON v = typeMismatch "hash with goals (either a list of slugs or a list of goal objects)" v
 
 -- TODO: the implementation doesn't match the spec: it has "id" and
 -- "has_authorized_fitbit" fields. I wonder what they're for!
@@ -44,6 +46,7 @@ instance FromJSON User where
 		<*> v .: "timezone"
 		<*> v .: "updated_at"
 		<*> parseJSON o
+	parseJSON o = typeMismatch "user object" o
 
 type Goal = () -- TODO
 
