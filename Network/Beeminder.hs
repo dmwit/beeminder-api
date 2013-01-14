@@ -13,6 +13,7 @@ import Control.Applicative
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Attoparsec.Number
+import Data.Char
 import Data.Conduit
 import Data.Default
 import Data.Maybe
@@ -71,7 +72,7 @@ data LevelOfGoalDetail
 
 	-- the above blank line and the below breech of style are intentional haddock workarounds
 	-- | maximal detail: report even about goals that have been deleted
-	| DiffDetails
+	| DiffSince
 		{ since  :: Integer -- ^ a Unix timestamp; show all the changes since that timestamp (new datapoints, deleted goals, etc.)
 		, skinny :: Bool    -- ^ when 'True', return only each goal's latest data point and a subset of the attributes for each goal
 		}
@@ -87,15 +88,21 @@ instance Default LevelOfGoalDetail where def = JustTheSlugs
 instance Default UserParameters    where def = UserParameters def def def def
 
 -- TODO: is String really the right type to use here...? probably ought to return Request m -> Request m or some such thing
--- | the URL of a 'User' object
+-- | the URL to GET for a 'User' object
 user :: UserParameters -> String
 user p
 	=  url ("users/" ++ fromMaybe "me" (userToGet p))
 	++ case goalsFilter p of
-		Nothing -> ""
+		Nothing    -> ""
 		Just Front -> "&goals_filter=front"
 		Just Back  -> "&goals_filter=back"
-	-- TODO: figure out a good style + add all the other parameters
+	++ case levelOfDetail p of
+		JustTheSlugs      -> ""
+		EverythingCurrent -> "&associations=true"
+		DiffSince t d     -> "&diff_since=" ++ show t ++ "&skinny=" ++ map toLower (show d)
+	++ case datapointsCount p of
+		Nothing -> ""
+		Just n  -> "&datapoints_count=" ++ show n
 
 -- TODO
 data Goal = Goal deriving (Eq, Ord, Show, Read)
@@ -103,7 +110,7 @@ instance FromJSON Goal where parseJSON _ = return Goal
 
 test :: IO (Maybe User)
 test = do
-	r   <- parseUrl (url "users/me" ++ "&diff_since=0") -- oh yes, this can be done much more principledly
+	r   <- parseUrl (user def)
 	man <- newManager def
 	bs  <- runResourceT (responseBody <$> httpLbs r {responseTimeout = Nothing} man)
 	return (decode bs)
