@@ -48,6 +48,10 @@ instance FromJSON ID where
 
 instance FromJSON UserGoals where
 	-- diff comes before hashes so that it is preferred when deleted_goals exists
+	-- TODO: this isn't quite right... Diff is clearly differentiable from
+	-- Slugs and Hashes, but those two (Slugs and Hashes) aren't differentiable
+	-- when the goals list is empty -- need something better than a heuristic here!
+	-- possible resolution: have separate User types for each?
 	parseJSON (Object v) = slugs <|> diff <|> hashes where
 		slugs  = Slugs  <$> v .: "goals"
 		hashes = Hashes <$> v .: "goals"
