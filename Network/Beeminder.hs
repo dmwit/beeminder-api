@@ -1,5 +1,13 @@
 {-# LANGUAGE OverloadedStrings, NoMonomorphismRestriction, StandaloneDeriving #-}
-module Network.Beeminder where
+module Network.Beeminder
+	( UserGoals(..)
+	, User(..)
+	, Burner(..)
+	, LevelOfGoalDetail(..)
+	, UserParameters(..)
+	, user
+	, Goal(..)
+	) where
 
 import Control.Applicative
 import Data.Aeson
@@ -19,15 +27,15 @@ basePath = "api/v1/"
 url p    = server ++ basePath ++ p ++ ".json?auth_token=" ++ token
 
 data UserGoals
-	= Slugs  [String]
-	| Hashes [Goal]
-	| Diff   [Goal] [String] -- ^ created or updated goals first, then IDs of deleted goals
+	= Slugs  [String]        -- ^ just the short names (use 'JustTheSlugs')
+	| Hashes [Goal]          -- ^ information about all currently existing goals (use 'EverythingCurrent')
+	| Diff   [Goal] [String] -- ^ created or updated goals first, then IDs of deleted goals (use 'Diff')
 	deriving (Eq, Ord, Show, Read)
 
 data User = User
 	{ username  :: String
 	, timezone  :: String
-	, updatedAt :: Integer
+	, updatedAt :: Integer -- ^ a Unix timestamp you can use to decide whether or not to use cached goal and user information
 	, goals     :: UserGoals
 	} deriving (Eq, Ord, Show, Read)
 
@@ -56,22 +64,30 @@ instance FromJSON User where
 	parseJSON o = typeMismatch "user object" o
 
 data Burner = Front | Back deriving (Eq, Ord, Show, Read, Bounded, Enum)
-data DiffParameters = DiffParameters
-	{ since  :: Integer
-	, skinny :: Bool
-	} deriving (Eq, Ord, Show, Read)
+-- TODO: list the attributes that you still get with 'skinny' (and test a call with skinny=True)
+data LevelOfGoalDetail
+	= JustTheSlugs      -- ^ minimal detail: just the "slug" (the part that goes in a URL)
+	| EverythingCurrent -- ^ details about all the currently existing goals
+
+	-- the above blank line and the below breech of style are intentional haddock workarounds
+	-- | maximal detail: report even about goals that have been deleted
+	| DiffDetails
+		{ since  :: Integer -- ^ a Unix timestamp; show all the changes since that timestamp (new datapoints, deleted goals, etc.)
+		, skinny :: Bool    -- ^ when 'True', return only each goal's latest data point and a subset of the attributes for each goal
+		}
+	deriving (Eq, Ord, Show, Read)
 data UserParameters = UserParameters
-	{ userToGet       :: Maybe String
-	, goalsFilter     :: Maybe Burner
-	, associations    :: Bool
-	, diffSince       :: Maybe DiffParameters
-	, datapointsCount :: Maybe Integer
+	{ userToGet       :: Maybe String      -- ^ 'Nothing' means \"whoever owns the API token\"
+	, goalsFilter     :: Maybe Burner      -- ^ 'Nothing' means \"all goals\"; the 'Front' and 'Back' 'Burner's are the goals above and below the fold in the web interface
+	, levelOfDetail   :: LevelOfGoalDetail -- ^ how much information do you want about the user's goals?
+	, datapointsCount :: Maybe Integer     -- ^ 'Nothing' means return all data points; 'Just' @n@ will return only the @n@ most recently added (not most recently timestamped!) data points
 	} deriving (Eq, Ord, Show, Read)
 
-instance Default DiffParameters where def = DiffParameters def False
-instance Default UserParameters where def = UserParameters def def False def def
+instance Default LevelOfGoalDetail where def = JustTheSlugs
+instance Default UserParameters    where def = UserParameters def def def def
 
 -- TODO: is String really the right type to use here...? probably ought to return Request m -> Request m or some such thing
+-- | the URL of a 'User' object
 user :: UserParameters -> String
 user p
 	=  url ("users/" ++ fromMaybe "me" (userToGet p))
