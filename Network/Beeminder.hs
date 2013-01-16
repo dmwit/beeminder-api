@@ -138,11 +138,26 @@ instance Resource Point where
 	_ID        = lens pointID        (\s b -> s { pointID        = b })
 	_UpdatedAt = lens pointUpdatedAt (\s b -> s { pointUpdatedAt = b })
 
--- TODO: instance FromJSON Point and datapoint access points
+instance FromJSON Point where
+	parseJSON o@(Object v) = Point
+		<$> v .: "timestamp"
+		<*> v .: "value"
+		<*> v .: "comment"
+		<*> v .: "requestid"
+		<*> v .: "id"
+		<*> v .: "updated_at"
+	parseJSON o = typeMismatch "datapoint" o
 
-test :: IO (Maybe User)
-test = do
-	r   <- parseUrl (user def)
+testPoly :: FromJSON a => String -> IO (Maybe a)
+testPoly url = do
+	r   <- parseUrl url
 	man <- newManager def
 	bs  <- runResourceT (responseBody <$> httpLbs r {responseTimeout = Nothing} man)
 	return (decode bs)
+
+testUser  :: IO (Maybe User)
+testPoint :: IO (Maybe [Point])
+testUser  = testPoly (user def)
+testPoint = testPoly (url "users/me/goals/read-papers/datapoints")
+
+test = testPoint
