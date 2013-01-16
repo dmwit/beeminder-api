@@ -10,6 +10,7 @@ module Network.Beeminder
 	) where
 
 import Control.Applicative
+import Control.Lens
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Attoparsec.Number
@@ -27,18 +28,29 @@ server   = "https://www.beeminder.com/"
 basePath = "api/v1/"
 url p    = server ++ basePath ++ p ++ ".json?auth_token=" ++ token
 
+class Resource a where
+	_ID        :: Simple Lens a String
+	_UpdatedAt :: Simple Lens a Integer -- ^ a Unix timestamp you can use to decide whether or not to use cached information
+
 data UserGoals
 	= Slugs  [String]        -- ^ just the short names (use 'JustTheSlugs')
 	| Hashes [Goal]          -- ^ information about all currently existing goals (use 'EverythingCurrent')
 	| Diff   [Goal] [String] -- ^ created or updated goals first, then IDs of deleted goals (use 'Diff')
 	deriving (Eq, Ord, Show, Read)
 
+-- | the '_UpdatedAt' value is the upper bound of all updates -- even nested
+-- ones to goals, datapoints, etc.
 data User = User
-	{ username  :: String
-	, timezone  :: String
-	, updatedAt :: Integer -- ^ a Unix timestamp you can use to decide whether or not to use cached goal and user information
-	, goals     :: UserGoals
+	{ username      :: String
+	, timezone      :: String
+	, goals         :: UserGoals
+	, userID        :: String
+	, userUpdatedAt :: Integer
 	} deriving (Eq, Ord, Show, Read)
+
+instance Resource User where
+	_ID        = lens userID        (\s b -> s { userID        = b })
+	_UpdatedAt = lens userUpdatedAt (\s b -> s { userUpdatedAt = b })
 
 -- internal type used to get a free list instance when parsing the Diff part of UserGoals
 data ID = ID { unID :: String } deriving (Eq, Ord, Show, Read)
@@ -64,8 +76,9 @@ instance FromJSON User where
 	parseJSON o@(Object v) = User
 		<$> v .: "username"
 		<*> v .: "timezone"
-		<*> v .: "updated_at"
 		<*> parseJSON o
+		<*> v .: "id"
+		<*> v .: "updated_at"
 	parseJSON o = typeMismatch "user object" o
 
 data Burner = Front | Back deriving (Eq, Ord, Show, Read, Bounded, Enum)
@@ -111,6 +124,21 @@ user p
 -- TODO
 data Goal = Goal deriving (Eq, Ord, Show, Read)
 instance FromJSON Goal where parseJSON _ = return Goal
+
+data Point = Point
+	{ timestamp      :: Integer
+	, value          :: Double
+	, comment        :: String
+	, requestID      :: Maybe String
+	, pointID        :: String
+	, pointUpdatedAt :: Integer
+	} deriving (Eq, Ord, Show, Read)
+
+instance Resource Point where
+	_ID        = lens pointID        (\s b -> s { pointID        = b })
+	_UpdatedAt = lens pointUpdatedAt (\s b -> s { pointUpdatedAt = b })
+
+-- TODO: instance FromJSON Point and datapoint access points
 
 test :: IO (Maybe User)
 test = do
