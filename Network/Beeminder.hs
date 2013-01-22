@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, NoMonomorphismRestriction, StandaloneDeriving #-}
+{-# LANGUAGE DataKinds, FlexibleInstances, OverloadedStrings, NoMonomorphismRestriction, TypeFamilies #-}
 module Network.Beeminder
 	( UserGoals(..)
 	, User(..)
@@ -31,6 +31,8 @@ url p    = server ++ basePath ++ p ++ ".json?auth_token=" ++ token
 class Resource a where
 	_ID        :: Simple Lens a String
 	_UpdatedAt :: Simple Lens a Integer -- ^ a Unix timestamp you can use to decide whether or not to use cached information
+
+data Call = Get | Create | Update | Delete deriving (Eq, Ord, Show, Read, Bounded, Enum)
 
 data UserGoals
 	= Slugs  [String]        -- ^ just the short names (use 'JustTheSlugs')
@@ -125,7 +127,9 @@ user p
 data Goal = Goal deriving (Eq, Ord, Show, Read)
 instance FromJSON Goal where parseJSON _ = return Goal
 
-data Point = Point
+data family Point :: Call -> *
+
+data instance Point Get = Point
 	{ timestamp      :: Integer
 	, value          :: Double
 	, comment        :: String
@@ -134,11 +138,11 @@ data Point = Point
 	, pointUpdatedAt :: Integer
 	} deriving (Eq, Ord, Show, Read)
 
-instance Resource Point where
+instance Resource (Point Get) where
 	_ID        = lens pointID        (\s b -> s { pointID        = b })
 	_UpdatedAt = lens pointUpdatedAt (\s b -> s { pointUpdatedAt = b })
 
-instance FromJSON Point where
+instance FromJSON (Point Get) where
 	parseJSON o@(Object v) = Point
 		<$> v .: "timestamp"
 		<*> v .: "value"
@@ -156,7 +160,7 @@ testPoly url = do
 	return (decode bs)
 
 testUser  :: IO (Maybe User)
-testPoint :: IO (Maybe [Point])
+testPoint :: IO (Maybe [Point Get])
 testUser  = testPoly (user def)
 testPoint = testPoly (url "users/me/goals/read-papers/datapoints")
 
