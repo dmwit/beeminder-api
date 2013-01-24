@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, NoMonomorphismRestriction #-}
+{-# LANGUAGE FlexibleInstances, OverloadedStrings, NoMonomorphismRestriction #-}
 module Network.Beeminder
 	( UserGoals(..)
 	, User(..)
@@ -11,6 +11,7 @@ module Network.Beeminder
 
 import Control.Applicative
 import Control.Lens
+import Control.Monad.IO.Class
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Attoparsec.Number
@@ -28,9 +29,13 @@ server   = "https://www.beeminder.com/"
 basePath = "api/v1/"
 url p    = server ++ basePath ++ p ++ ".json?auth_token=" ++ token
 
+-- TODO: make some top-level documentation with these details:
+-- * all times are an Integer representing a Unix timestamp
+-- * something about requested IDs, like how to request them and how to use them -- can they be used anywhere a normal ID can?
+
 class Resource a where
 	_ID        :: Simple Lens a String
-	_UpdatedAt :: Simple Lens a Integer -- ^ a Unix timestamp you can use to decide whether or not to use cached information
+	_UpdatedAt :: Simple Lens a Integer -- ^ you can use this to decide whether or not to use cached information
 
 data UserGoals
 	= Slugs  [String]        -- ^ just the short names (use 'JustTheSlugs')
@@ -147,6 +152,30 @@ instance FromJSON Point where
 		<*> v .: "id"
 		<*> v .: "updated_at"
 	parseJSON o = typeMismatch "datapoint" o
+
+-- | You probably will not like the timestamp and value you get from the
+-- 'Default' instance, so remember to override them! There's also a 'Default'
+-- instance that uses the current timestamp, which is a bit closer to what you
+-- might want, but you will still probably want to set 'createPointValue'.
+data CreatePointParameters = CreatePointParameters
+	{ createPointTimestamp :: Integer
+	, createPointValue     :: Double
+	, createComment        :: String
+	, createRequestID      :: Maybe String
+	} deriving (Eq, Ord, Show, Read)
+
+instance Default CreatePointParameters where def = CreatePointParameters 0 1 def def
+instance MonadIO m => Default (m CreatePointParameters) where
+	def = do
+		ts <- now
+		return (def { createPointTimestamp = ts })
+		where
+		now = undefined -- TODO
+
+-- TODO
+createPoint, createPointNotify :: CreatePointParameters -> String
+createPoint = undefined
+createPointNotify = undefined
 
 testPoly :: FromJSON a => String -> IO (Maybe a)
 testPoly url = do
