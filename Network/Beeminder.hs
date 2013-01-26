@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, OverloadedStrings, NoMonomorphismRestriction #-}
+{-# LANGUAGE OverloadedStrings, NoMonomorphismRestriction #-}
 module Network.Beeminder
 	( UserGoals(..)
 	, User(..)
@@ -19,6 +19,7 @@ import Data.Char
 import Data.Conduit
 import Data.Default
 import Data.Maybe
+import Data.Time.Clock.POSIX
 import Network.HTTP.Conduit
 
 -- TODO
@@ -153,29 +154,75 @@ instance FromJSON Point where
 		<*> v .: "updated_at"
 	parseJSON o = typeMismatch "datapoint" o
 
--- | You probably will not like the timestamp and value you get from the
--- 'Default' instance, so remember to override them! There's also a 'Default'
--- instance that uses the current timestamp, which is a bit closer to what you
--- might want, but you will still probably want to set 'createPointValue'.
-data CreatePointParameters = CreatePointParameters
-	{ createPointTimestamp :: Integer
-	, createPointValue     :: Double
-	, createComment        :: String
-	, createRequestID      :: Maybe String
+-- | You probably will not like the goal you get from the 'Default' instance,
+-- so remember to override it. You might also like 'defPoints'.
+data PointsParameters = PointsParameters
+	{ pointsUser :: Maybe String
+	, pointsGoal :: String
 	} deriving (Eq, Ord, Show, Read)
 
-instance Default CreatePointParameters where def = CreatePointParameters 0 1 def def
-instance MonadIO m => Default (m CreatePointParameters) where
-	def = do
-		ts <- now
-		return (def { createPointTimestamp = ts })
-		where
-		now = undefined -- TODO
+instance Default PointsParameters where def = PointsParameters def def
+defPoints = PointsParameters def
+
+points :: PointsParameters -> String
+points p = url (
+	"users/" ++ fromMaybe "me" (pointsUser p) ++ "/" ++
+	"goals/" ++ pointsGoal p ++ "/" ++
+	"datapoints"
+	)
+
+-- | You probably will not like the timestamp and value you get from the
+-- 'Default' instance, so remember to override them! You might also like
+-- 'defPrePoint' or 'defPrePointNow'.
+data PrePoint = PrePoint
+	{ preTimestamp :: Integer
+	, preValue     :: Double
+	, preComment   :: String
+	, preRequestID :: Maybe String
+	} deriving (Eq, Ord, Show, Read)
+
+instance Default PrePoint where def = PrePoint 0 1 def def
+
+defPrePoint :: Integer -> Double -> PrePoint
+defPrePointNow :: (Applicative m, MonadIO m) => Double -> m PrePoint
+defPrePoint ts v = def { preTimestamp = ts, preValue = v }
+defPrePointNow v = defPrePoint
+	<$> (round <$> liftIO getPOSIXTime)
+	<*> (return v)
+
+-- TODO: need a more scalable and consistent namespacing solution... (that's
+-- why we've got the whole "lens" dependency, though, right?)
+data CreatePointParameters = CreatePointParameters
+	{ createPointUser :: Maybe String
+	, createPointGoal :: String
+	, createPointPre  :: PrePoint
+	} deriving (Eq, Ord, Show, Read)
+
+data CreatePointsParameters = CreatePointsParameters
+	{ createPointsUser :: Maybe String
+	, createPointsGoal :: String
+	, createPointsPre  :: [PrePoint]
+	}
+
+instance Default CreatePointParameters  where def = CreatePointParameters  def def def
+instance Default CreatePointsParameters where def = CreatePointsParameters def def def
+
+createPoint , createPointNotify  :: CreatePointParameters  -> String
+createPoints, createPointsNotify :: CreatePointsParameters -> String
+
+-- TODO: test these
+createPointNotify p = createPoint p ++ "&sendmail=true"
+createPoint p = url ("/users/" ++ fromMaybe "me" (createPointUser p) ++ "/goals/" ++ createPointGoal p ++ "/datapoints")
+	++ "&timestamp=" ++ (show . preTimestamp . createPointPre) p
+	++ "&value="     ++ (show . preValue     . createPointPre) p
+	++ "&comment="   ++ (       preComment   . createPointPre) p -- TODO: blatantly wrong
+	++ case (preRequestID . createPointPre) p of
+		Nothing -> ""
+		Just r  -> "&requestid=" ++ r -- TODO: blatantly wrong
 
 -- TODO
-createPoint, createPointNotify :: CreatePointParameters -> String
-createPoint = undefined
-createPointNotify = undefined
+createPoints       = undefined
+createPointsNotify = undefined
 
 testPoly :: FromJSON a => String -> IO (Maybe a)
 testPoly url = do
@@ -187,6 +234,6 @@ testPoly url = do
 testUser  :: IO (Maybe User)
 testPoint :: IO (Maybe [Point])
 testUser  = testPoly (user def)
-testPoint = testPoly (url "users/me/goals/read-papers/datapoints")
+testPoint = testPoly (points (defPoints "read-papers"))
 
 test = testPoint
