@@ -248,6 +248,11 @@ testPoint :: IO (Maybe [Point])
 testUser  = testPoly "GET" (user def)
 testPoint = testPoly "GET" (points (with "read-papers"))
 
+-- results in a 500 status; perhaps we should finally switch from String to
+-- http-conduit's more structured Request type? check out
+-- render(Simple)Query in http-types  :Network.HTTP.Types,
+-- queryString         in http-conduit:Network.HTTP.Conduit, and
+-- urlEncodedBody      in http-conduit:Network.HTTP.Conduit
 testCreatePoint :: IO (Maybe Point)
 testCreatePoint = testPoly "POST" . createPoint =<< with "testapi" 1
 
