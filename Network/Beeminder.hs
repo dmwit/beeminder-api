@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, NoMonomorphismRestriction #-}
+{-# LANGUAGE FlexibleInstances, OverloadedStrings, NoMonomorphismRestriction, TypeFamilies #-}
 module Network.Beeminder
 	( UserGoals(..)
 	, User(..)
@@ -15,6 +15,7 @@ import Control.Monad.IO.Class
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Attoparsec.Number
+import Data.ByteString (ByteString)
 import Data.Char
 import Data.Conduit
 import Data.Default
@@ -37,6 +38,13 @@ url p    = server ++ basePath ++ p ++ ".json?auth_token=" ++ token
 class Resource a where
 	_ID        :: Simple Lens a String
 	_UpdatedAt :: Simple Lens a Integer -- ^ you can use this to decide whether or not to use cached information
+
+-- | This is like data-default's 'Default' class, but for types that may not
+-- always have a reasonable default for every field. For example, if @Foo@ has
+-- such a field, there will be an instance for a function type returning @Foo@
+-- or an instance for @IO Foo@ or similar. When a type does have good defaults
+-- for all fields, it will instantiate both this and 'Default'.
+class Parameters a where with :: a
 
 data UserGoals
 	= Slugs  [String]        -- ^ just the short names (use 'JustTheSlugs')
@@ -154,15 +162,12 @@ instance FromJSON Point where
 		<*> v .: "updated_at"
 	parseJSON o = typeMismatch "datapoint" o
 
--- | You probably will not like the goal you get from the 'Default' instance,
--- so remember to override it. You might also like 'defPoints'.
 data PointsParameters = PointsParameters
 	{ pointsUser :: Maybe String
 	, pointsGoal :: String
 	} deriving (Eq, Ord, Show, Read)
 
-instance Default PointsParameters where def = PointsParameters def def
-defPoints = PointsParameters def
+instance goal ~ String => Parameters (goal -> PointsParameters) where with = PointsParameters def
 
 points :: PointsParameters -> String
 points p = url (
@@ -171,9 +176,6 @@ points p = url (
 	"datapoints"
 	)
 
--- | You probably will not like the timestamp and value you get from the
--- 'Default' instance, so remember to override them! You might also like
--- 'defPrePoint' or 'defPrePointNow'.
 data PrePoint = PrePoint
 	{ preTimestamp :: Integer
 	, preValue     :: Double
@@ -181,14 +183,12 @@ data PrePoint = PrePoint
 	, preRequestID :: Maybe String
 	} deriving (Eq, Ord, Show, Read)
 
-instance Default PrePoint where def = PrePoint 0 1 def def
-
-defPrePoint :: Integer -> Double -> PrePoint
-defPrePointNow :: (Applicative m, MonadIO m) => Double -> m PrePoint
-defPrePoint ts v = def { preTimestamp = ts, preValue = v }
-defPrePointNow v = defPrePoint
-	<$> (round <$> liftIO getPOSIXTime)
-	<*> (return v)
+instance (ts ~ Integer, v ~ Double) => Parameters (ts -> v -> PrePoint) where
+	with ts v = PrePoint ts v def def
+instance v ~ Double => Parameters (IO (v -> PrePoint)) where
+	with = with . round <$> liftIO getPOSIXTime
+instance v ~ Double => Parameters (v -> IO PrePoint) where
+	with v = ($v) <$> with
 
 -- TODO: need a more scalable and consistent namespacing solution... (that's
 -- why we've got the whole "lens" dependency, though, right?)
@@ -198,13 +198,21 @@ data CreatePointParameters = CreatePointParameters
 	, createPointPre  :: PrePoint
 	} deriving (Eq, Ord, Show, Read)
 
+instance (goal ~ String, ts ~ Integer, v ~ Double) => Parameters (goal -> ts -> v -> CreatePointParameters) where
+	with goal ts v = CreatePointParameters def goal (with ts v)
+instance (goal ~ String, v ~ Double) => Parameters (IO (goal -> v -> CreatePointParameters)) where
+	with = (\f goal -> CreatePointParameters def goal . f) <$> with
+instance (goal ~ String, v ~ Double) => Parameters (goal -> IO (v -> CreatePointParameters)) where
+	with goal = ($goal) <$> with
+instance (goal ~ String, v ~ Double) => Parameters (goal -> v -> IO CreatePointParameters) where
+	with goal v = ($v) <$> with goal
+
 data CreatePointsParameters = CreatePointsParameters
 	{ createPointsUser :: Maybe String
 	, createPointsGoal :: String
 	, createPointsPre  :: [PrePoint]
 	}
 
-instance Default CreatePointParameters  where def = CreatePointParameters  def def def
 instance Default CreatePointsParameters where def = CreatePointsParameters def def def
 
 createPoint , createPointNotify  :: CreatePointParameters  -> String
@@ -212,28 +220,35 @@ createPoints, createPointsNotify :: CreatePointsParameters -> String
 
 -- TODO: test these
 createPointNotify p = createPoint p ++ "&sendmail=true"
-createPoint p = url ("/users/" ++ fromMaybe "me" (createPointUser p) ++ "/goals/" ++ createPointGoal p ++ "/datapoints")
+createPoint p = url ("users/" ++ fromMaybe "me" (createPointUser p) ++ "/goals/" ++ createPointGoal p ++ "/datapoints")
 	++ "&timestamp=" ++ (show . preTimestamp . createPointPre) p
 	++ "&value="     ++ (show . preValue     . createPointPre) p
-	++ "&comment="   ++ (       preComment   . createPointPre) p -- TODO: blatantly wrong
+	++ "&comment="   ++ (       preComment   . createPointPre) p -- TODO: blatantly wrong (URL encode)
 	++ case (preRequestID . createPointPre) p of
 		Nothing -> ""
-		Just r  -> "&requestid=" ++ r -- TODO: blatantly wrong
+		Just r  -> "&requestid=" ++ r -- TODO: blatantly wrong (URL encode)
 
 -- TODO
 createPoints       = undefined
 createPointsNotify = undefined
 
-testPoly :: FromJSON a => String -> IO (Maybe a)
-testPoly url = do
+instance Parameters LevelOfGoalDetail      where with = def
+instance Parameters UserParameters         where with = def
+instance Parameters CreatePointsParameters where with = def
+
+testPoly :: FromJSON a => ByteString -> String -> IO (Maybe a)
+testPoly m url = do
 	r   <- parseUrl url
 	man <- newManager def
-	bs  <- runResourceT (responseBody <$> httpLbs r {responseTimeout = Nothing} man)
+	bs  <- runResourceT (responseBody <$> httpLbs r {responseTimeout = Nothing, method = m} man)
 	return (decode bs)
 
 testUser  :: IO (Maybe User)
 testPoint :: IO (Maybe [Point])
-testUser  = testPoly (user def)
-testPoint = testPoly (points (defPoints "read-papers"))
+testUser  = testPoly "GET" (user def)
+testPoint = testPoly "GET" (points (with "read-papers"))
 
-test = testPoint
+testCreatePoint :: IO (Maybe Point)
+testCreatePoint = testPoly "POST" . createPoint =<< with "testapi" 1
+
+test = testCreatePoint
