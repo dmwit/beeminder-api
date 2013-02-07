@@ -20,16 +20,23 @@ import Data.Char
 import Data.Conduit
 import Data.Default
 import Data.Maybe
+import Data.Monoid
+import Data.String
 import Data.Time.Clock.POSIX
 import Network.HTTP.Conduit
 
 -- TODO
+import qualified Data.ByteString.Char8 as BS
 import System.IO.Unsafe
-token = unsafePerformIO (init `fmap` readFile "token")
+token = unsafePerformIO (BS.init <$> BS.readFile "token")
 
-server   = "https://www.beeminder.com/"
-basePath = "api/v1/"
-url p    = server ++ basePath ++ p ++ ".json?auth_token=" ++ token
+baseReq p = def
+	{ secure      = True
+	, host        = "www.beeminder.com"
+	, port        = 443
+	, path        = "/api/v1/" <> p <> ".json"
+	, queryString = "?auth_token=" <> token
+	}
 
 -- TODO: make some top-level documentation with these details:
 -- * all times are an Integer representing a Unix timestamp
@@ -118,10 +125,14 @@ data UserParameters = UserParameters
 instance Default LevelOfGoalDetail where def = JustTheSlugs
 instance Default UserParameters    where def = UserParameters def def def def
 
--- TODO: is String really the right type to use here...? probably ought to return Request m -> Request m or some such thing
--- | the URL to GET for a 'User' object
-user :: UserParameters -> String
+-- TODO: fromString is pack, this is possibly wrong everywhere it's used...?
+maybeMe f v = fromString (fromMaybe "me" (f v))
+
+-- TODO
+user :: Monad m => UserParameters -> Request m
 user p
+	= baseReq ("users/" <> maybeMe userToGet p)
+{-
 	=  url ("users/" ++ fromMaybe "me" (userToGet p))
 	++ case goalsFilter p of
 		Nothing    -> ""
@@ -134,6 +145,7 @@ user p
 	++ case datapointsCount p of
 		Nothing -> ""
 		Just n  -> "&datapoints_count=" ++ show n
+-}
 
 -- TODO
 data Goal = Goal deriving (Eq, Ord, Show, Read)
@@ -169,10 +181,11 @@ data PointsParameters = PointsParameters
 
 instance goal ~ String => Parameters (goal -> PointsParameters) where with = PointsParameters def
 
-points :: PointsParameters -> String
-points p = url (
-	"users/" ++ fromMaybe "me" (pointsUser p) ++ "/" ++
-	"goals/" ++ pointsGoal p ++ "/" ++
+-- TODO: fromString
+points :: Monad m => PointsParameters -> Request m
+points p = baseReq (
+	"users/" <> maybeMe pointsUser p <> "/" <>
+	"goals/" <> fromString (pointsGoal p) <> "/" <>
 	"datapoints"
 	)
 
@@ -215,18 +228,21 @@ data CreatePointsParameters = CreatePointsParameters
 
 instance Default CreatePointsParameters where def = CreatePointsParameters def def def
 
-createPoint , createPointNotify  :: CreatePointParameters  -> String
-createPoints, createPointsNotify :: CreatePointsParameters -> String
+createPoint , createPointNotify  :: Monad m => CreatePointParameters  -> Request m
+createPoints, createPointsNotify :: Monad m => CreatePointsParameters -> Request m
 
--- TODO: test these
-createPointNotify p = createPoint p ++ "&sendmail=true"
-createPoint p = url ("users/" ++ fromMaybe "me" (createPointUser p) ++ "/goals/" ++ createPointGoal p ++ "/datapoints")
-	++ "&timestamp=" ++ (show . preTimestamp . createPointPre) p
-	++ "&value="     ++ (show . preValue     . createPointPre) p
-	++ "&comment="   ++ (       preComment   . createPointPre) p -- TODO: blatantly wrong (URL encode)
-	++ case (preRequestID . createPointPre) p of
-		Nothing -> ""
-		Just r  -> "&requestid=" ++ r -- TODO: blatantly wrong (URL encode)
+createPointNotify = createPointInternal True
+createPoint       = createPointInternal False
+
+-- TODO: BS.pack probably ain't it
+createPointInternal sendmail p = urlEncodedBody
+	([("timestamp" , (BS.pack . show . preTimestamp . createPointPre) p),
+	  ("value"     , (BS.pack . show . preValue     . createPointPre) p),
+	  ("comment"   , (BS.pack .        preComment   . createPointPre) p)] ++
+	 [("requestid" ,  BS.pack r) | Just r <- [preRequestID (createPointPre p)]] ++
+	 [("sendmail"  , "true") | sendmail]
+	)
+	(baseReq ("users/" <> maybeMe createPointUser p <> "/goals/" <> BS.pack (createPointGoal p) <> "/datapoints"))
 
 -- TODO
 createPoints       = undefined
@@ -236,24 +252,18 @@ instance Parameters LevelOfGoalDetail      where with = def
 instance Parameters UserParameters         where with = def
 instance Parameters CreatePointsParameters where with = def
 
-testPoly :: FromJSON a => ByteString -> String -> IO (Maybe a)
-testPoly m url = do
-	r   <- parseUrl url
+testPoly :: FromJSON a => Request (ResourceT IO) -> IO (Maybe a)
+testPoly r = do
 	man <- newManager def
-	bs  <- runResourceT (responseBody <$> httpLbs r {responseTimeout = Nothing, method = m} man)
+	bs  <- runResourceT (responseBody <$> httpLbs r {responseTimeout = Nothing} man)
 	return (decode bs)
 
-testUser  :: IO (Maybe User)
-testPoint :: IO (Maybe [Point])
-testUser  = testPoly "GET" (user def)
-testPoint = testPoly "GET" (points (with "read-papers"))
-
--- results in a 500 status; perhaps we should finally switch from String to
--- http-conduit's more structured Request type? check out
--- render(Simple)Query in http-types  :Network.HTTP.Types,
--- queryString         in http-conduit:Network.HTTP.Conduit, and
--- urlEncodedBody      in http-conduit:Network.HTTP.Conduit
+testUser        :: IO (Maybe User)
+testPoint       :: IO (Maybe [Point])
 testCreatePoint :: IO (Maybe Point)
-testCreatePoint = testPoly "POST" . createPoint =<< with "testapi" 1
+
+testUser        = testPoly . user        $   with
+testPoint       = testPoly . points      $   with "read-papers"
+testCreatePoint = testPoly . createPoint =<< with "apitest" 1
 
 test = testCreatePoint
