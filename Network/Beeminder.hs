@@ -9,6 +9,7 @@ module Network.Beeminder
 	, Goal(..)
 	) where
 
+import Blaze.ByteString.Builder
 import Control.Applicative
 import Control.Lens hiding ((&))
 import Control.Monad.IO.Class
@@ -22,34 +23,44 @@ import Data.Default
 import Data.Maybe
 import Data.Monoid
 import Data.String
+import Data.Text (Text)
+import Data.Text.Encoding
 import Data.Time.Clock.POSIX
 import Network.HTTP.Conduit
 import Network.HTTP.Types
+
+import qualified Blaze.ByteString.Builder.Char.Utf8 as Builder
 
 -- TODO
 import qualified Data.ByteString.Char8 as BS
 import System.IO.Unsafe
 token = unsafePerformIO (BS.init <$> BS.readFile "token")
 
-baseReq p = def
+-- things that ought to be in somebody else's module/package {{{
+renderSimpleQueryText b xs = toByteString (renderQueryText b [(x, Just y) | (x, y) <- xs])
+urlEncodedBodyText      xs = urlEncodedBody [(encodeUtf8 x, encodeUtf8 y) | (x, y) <- xs]
+instance Default Text where def = ""
+-- }}}
+
+baseReq segments = def
 	{ secure      = True
 	, host        = "www.beeminder.com"
 	, port        = 443
-	, path        = "/api/v1/" <> p <> ".json"
+	, path        = toByteString (encodePathSegments ("api":"v1":segments) <> Builder.fromString ".json")
 	, queryString = "?auth_token=" <> token
 	}
 
 infixl 4 &
 req & q
-	| BS.null (queryString req) = req { queryString = renderSimpleQuery True q }
-	| otherwise                 = req { queryString = queryString req <> "&" <> renderSimpleQuery False q }
+	| BS.null (queryString req) = req { queryString = renderSimpleQueryText True q }
+	| otherwise                 = req { queryString = queryString req <> "&" <> renderSimpleQueryText False q }
 
 -- TODO: make some top-level documentation with these details:
 -- * all times are an Integer representing a Unix timestamp
 -- * something about requested IDs, like how to request them and how to use them -- can they be used anywhere a normal ID can?
 
 class Resource a where
-	_ID        :: Simple Lens a String
+	_ID        :: Simple Lens a Text
 	_UpdatedAt :: Simple Lens a Integer -- ^ you can use this to decide whether or not to use cached information
 
 -- | This is like data-default's 'Default' class, but for types that may not
@@ -60,18 +71,18 @@ class Resource a where
 class Parameters a where with :: a
 
 data UserGoals
-	= Slugs  [String]        -- ^ just the short names (use 'JustTheSlugs')
-	| Hashes [Goal]          -- ^ information about all currently existing goals (use 'EverythingCurrent')
-	| Diff   [Goal] [String] -- ^ created or updated goals first, then IDs of deleted goals (use 'Diff')
+	= Slugs  [Text]        -- ^ just the short names (use 'JustTheSlugs')
+	| Hashes [Goal]        -- ^ information about all currently existing goals (use 'EverythingCurrent')
+	| Diff   [Goal] [Text] -- ^ created or updated goals first, then IDs of deleted goals (use 'Diff')
 	deriving (Eq, Ord, Show, Read)
 
 -- | the '_UpdatedAt' value is the upper bound of all updates -- even nested
 -- ones to goals, datapoints, etc.
 data User = User
-	{ username      :: String
-	, timezone      :: String
+	{ username      :: Text
+	, timezone      :: Text
 	, goals         :: UserGoals
-	, userID        :: String
+	, userID        :: Text
 	, userUpdatedAt :: Integer
 	} deriving (Eq, Ord, Show, Read)
 
@@ -80,7 +91,7 @@ instance Resource User where
 	_UpdatedAt = lens userUpdatedAt (\s b -> s { userUpdatedAt = b })
 
 -- internal type used to get a free list instance when parsing the Diff part of UserGoals
-data ID = ID { unID :: String } deriving (Eq, Ord, Show, Read)
+data ID = ID { unID :: Text } deriving (Eq, Ord, Show, Read)
 instance FromJSON ID where
 	parseJSON (Object v) = ID <$> v .: "id"
 	parseJSON o = typeMismatch "ID" o
@@ -122,7 +133,7 @@ data LevelOfGoalDetail
 		}
 	deriving (Eq, Ord, Show, Read)
 data UserParameters = UserParameters
-	{ userToGet       :: Maybe String      -- ^ 'Nothing' means \"whoever owns the API token\"
+	{ userToGet       :: Maybe Text        -- ^ 'Nothing' means \"whoever owns the API token\"
 	, goalsFilter     :: Maybe Burner      -- ^ 'Nothing' means \"all goals\"; the 'Front' and 'Back' 'Burner's are the goals above and below the fold in the web interface
 	, levelOfDetail   :: LevelOfGoalDetail -- ^ how much information do you want about the user's goals?
 	, datapointsCount :: Maybe Integer     -- ^ 'Nothing' means return all data points; 'Just' @n@ will return only the @n@ most recently added (not most recently timestamped!) data points
@@ -131,20 +142,22 @@ data UserParameters = UserParameters
 instance Default LevelOfGoalDetail where def = JustTheSlugs
 instance Default UserParameters    where def = UserParameters def def def def
 
--- TODO: fromString is pack, this is possibly wrong everywhere it's used...?
-maybeMe f v = fromString (fromMaybe "me" (f v))
+maybeMe :: (a -> Maybe Text) -> (a -> Text)
+maybeMe f v = fromMaybe "me" (f v)
+
+textShow, lowerShow :: Show a => a -> Text
+textShow  = fromString . show
+lowerShow = fromString . map toLower . show
 
 user :: Monad m => UserParameters -> Request m
 user p
-	= baseReq ("users/" <> maybeMe userToGet p)
+	= baseReq ["users", maybeMe userToGet p]
 	& case levelOfDetail p of
 	  	JustTheSlugs      -> []
 	  	EverythingCurrent -> [("associations", "true")]
-	  	DiffSince t d     -> [("diff_since", bsShow t), ("skinny", bsShow d)]
-	++ [("goals_filter",     bsShow b) | Just b <- [goalsFilter     p]]
-	++ [("datapoints_count", bsShow n) | Just n <- [datapointsCount p]]
-	where
-	bsShow = BS.pack . map toLower . show -- this use of pack is okay, because show always outputs ASCII (at least at the types we're using in this function)
+	  	DiffSince t d     -> [("diff_since", lowerShow t), ("skinny", lowerShow d)]
+	++ [("goals_filter",     lowerShow b) | Just b <- [goalsFilter     p]]
+	++ [("datapoints_count", lowerShow n) | Just n <- [datapointsCount p]]
 
 -- TODO
 data Goal = Goal deriving (Eq, Ord, Show, Read)
@@ -153,9 +166,9 @@ instance FromJSON Goal where parseJSON _ = return Goal
 data Point = Point
 	{ timestamp      :: Integer
 	, value          :: Double
-	, comment        :: String
-	, requestID      :: Maybe String
-	, pointID        :: String
+	, comment        :: Text
+	, requestID      :: Maybe Text
+	, pointID        :: Text
 	, pointUpdatedAt :: Integer
 	} deriving (Eq, Ord, Show, Read)
 
@@ -174,25 +187,20 @@ instance FromJSON Point where
 	parseJSON o = typeMismatch "datapoint" o
 
 data PointsParameters = PointsParameters
-	{ pointsUser :: Maybe String
-	, pointsGoal :: String
+	{ pointsUser :: Maybe Text
+	, pointsGoal :: Text
 	} deriving (Eq, Ord, Show, Read)
 
-instance goal ~ String => Parameters (goal -> PointsParameters) where with = PointsParameters def
+instance goal ~ Text => Parameters (goal -> PointsParameters) where with = PointsParameters def
 
--- TODO: fromString
 points :: Monad m => PointsParameters -> Request m
-points p = baseReq (
-	"users/" <> maybeMe pointsUser p <> "/" <>
-	"goals/" <> fromString (pointsGoal p) <> "/" <>
-	"datapoints"
-	)
+points p = baseReq ["users", maybeMe pointsUser p, "goals", pointsGoal p, "datapoints"]
 
 data PrePoint = PrePoint
 	{ preTimestamp :: Integer
 	, preValue     :: Double
-	, preComment   :: String
-	, preRequestID :: Maybe String
+	, preComment   :: Text
+	, preRequestID :: Maybe Text
 	} deriving (Eq, Ord, Show, Read)
 
 instance (ts ~ Integer, v ~ Double) => Parameters (ts -> v -> PrePoint) where
@@ -205,23 +213,23 @@ instance v ~ Double => Parameters (v -> IO PrePoint) where
 -- TODO: need a more scalable and consistent namespacing solution... (that's
 -- why we've got the whole "lens" dependency, though, right?)
 data CreatePointParameters = CreatePointParameters
-	{ createPointUser :: Maybe String
-	, createPointGoal :: String
+	{ createPointUser :: Maybe Text
+	, createPointGoal :: Text
 	, createPointPre  :: PrePoint
 	} deriving (Eq, Ord, Show, Read)
 
-instance (goal ~ String, ts ~ Integer, v ~ Double) => Parameters (goal -> ts -> v -> CreatePointParameters) where
+instance (goal ~ Text, ts ~ Integer, v ~ Double) => Parameters (goal -> ts -> v -> CreatePointParameters) where
 	with goal ts v = CreatePointParameters def goal (with ts v)
-instance (goal ~ String, v ~ Double) => Parameters (IO (goal -> v -> CreatePointParameters)) where
+instance (goal ~ Text, v ~ Double) => Parameters (IO (goal -> v -> CreatePointParameters)) where
 	with = (\f goal -> CreatePointParameters def goal . f) <$> with
-instance (goal ~ String, v ~ Double) => Parameters (goal -> IO (v -> CreatePointParameters)) where
+instance (goal ~ Text, v ~ Double) => Parameters (goal -> IO (v -> CreatePointParameters)) where
 	with goal = ($goal) <$> with
-instance (goal ~ String, v ~ Double) => Parameters (goal -> v -> IO CreatePointParameters) where
+instance (goal ~ Text, v ~ Double) => Parameters (goal -> v -> IO CreatePointParameters) where
 	with goal v = ($v) <$> with goal
 
 data CreatePointsParameters = CreatePointsParameters
-	{ createPointsUser :: Maybe String
-	, createPointsGoal :: String
+	{ createPointsUser :: Maybe Text
+	, createPointsGoal :: Text
 	, createPointsPre  :: [PrePoint]
 	}
 
@@ -233,15 +241,15 @@ createPoints, createPointsNotify :: Monad m => CreatePointsParameters -> Request
 createPointNotify = createPointInternal True
 createPoint       = createPointInternal False
 
--- TODO: BS.pack probably ain't it
-createPointInternal sendmail p = urlEncodedBody
-	([("timestamp" , (BS.pack . show . preTimestamp . createPointPre) p),
-	  ("value"     , (BS.pack . show . preValue     . createPointPre) p),
-	  ("comment"   , (BS.pack .        preComment   . createPointPre) p)] ++
-	 [("requestid" ,  BS.pack r) | Just r <- [preRequestID (createPointPre p)]] ++
-	 [("sendmail"  , "true") | sendmail]
+createPointInternal sendmail p = urlEncodedBodyText
+	([("timestamp", (textShow . preTimestamp . createPointPre) p),
+	  ("value"    , (textShow . preValue     . createPointPre) p),
+	  ("comment"  , (           preComment   . createPointPre) p)] ++
+	 [("requestid", r) | Just r <- [preRequestID (createPointPre p)]] ++
+	 [("sendmail" , "true") | sendmail]
 	)
-	(baseReq ("users/" <> maybeMe createPointUser p <> "/goals/" <> BS.pack (createPointGoal p) <> "/datapoints"))
+	-- TODO: unify with the other occurrence of users/me/goals/goal-name/datapoints
+	(baseReq ["users", maybeMe createPointUser p, "goals", createPointGoal p, "datapoints"])
 
 -- TODO
 createPoints       = undefined
