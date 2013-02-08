@@ -10,7 +10,7 @@ module Network.Beeminder
 	) where
 
 import Control.Applicative
-import Control.Lens
+import Control.Lens hiding ((&))
 import Control.Monad.IO.Class
 import Data.Aeson
 import Data.Aeson.Types
@@ -24,6 +24,7 @@ import Data.Monoid
 import Data.String
 import Data.Time.Clock.POSIX
 import Network.HTTP.Conduit
+import Network.HTTP.Types
 
 -- TODO
 import qualified Data.ByteString.Char8 as BS
@@ -37,6 +38,11 @@ baseReq p = def
 	, path        = "/api/v1/" <> p <> ".json"
 	, queryString = "?auth_token=" <> token
 	}
+
+infixl 4 &
+req & q
+	| BS.null (queryString req) = req { queryString = renderSimpleQuery True q }
+	| otherwise                 = req { queryString = queryString req <> "&" <> renderSimpleQuery False q }
 
 -- TODO: make some top-level documentation with these details:
 -- * all times are an Integer representing a Unix timestamp
@@ -128,24 +134,17 @@ instance Default UserParameters    where def = UserParameters def def def def
 -- TODO: fromString is pack, this is possibly wrong everywhere it's used...?
 maybeMe f v = fromString (fromMaybe "me" (f v))
 
--- TODO
 user :: Monad m => UserParameters -> Request m
 user p
 	= baseReq ("users/" <> maybeMe userToGet p)
-{-
-	=  url ("users/" ++ fromMaybe "me" (userToGet p))
-	++ case goalsFilter p of
-		Nothing    -> ""
-		Just Front -> "&goals_filter=front"
-		Just Back  -> "&goals_filter=back"
-	++ case levelOfDetail p of
-		JustTheSlugs      -> ""
-		EverythingCurrent -> "&associations=true"
-		DiffSince t d     -> "&diff_since=" ++ show t ++ "&skinny=" ++ map toLower (show d)
-	++ case datapointsCount p of
-		Nothing -> ""
-		Just n  -> "&datapoints_count=" ++ show n
--}
+	& case levelOfDetail p of
+	  	JustTheSlugs      -> []
+	  	EverythingCurrent -> [("associations", "true")]
+	  	DiffSince t d     -> [("diff_since", bsShow t), ("skinny", bsShow d)]
+	++ [("goals_filter",     bsShow b) | Just b <- [goalsFilter     p]]
+	++ [("datapoints_count", bsShow n) | Just n <- [datapointsCount p]]
+	where
+	bsShow = BS.pack . map toLower . show -- this use of pack is okay, because show always outputs ASCII (at least at the types we're using in this function)
 
 -- TODO
 data Goal = Goal deriving (Eq, Ord, Show, Read)
