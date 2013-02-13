@@ -1,0 +1,2 @@
+:set -XOverloadedStrings
+:load *Network.Beeminder
