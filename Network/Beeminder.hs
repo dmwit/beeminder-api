@@ -11,12 +11,13 @@ module Network.Beeminder
 
 import Blaze.ByteString.Builder
 import Control.Applicative
-import Control.Lens hiding ((&))
+import Control.Lens hiding ((&), (.=))
 import Control.Monad.IO.Class
 import Data.Aeson
 import Data.Aeson.Types
 import Data.Attoparsec.Number
 import Data.ByteString (ByteString)
+import Data.ByteString.Lazy (toStrict)
 import Data.Char
 import Data.Conduit
 import Data.Default
@@ -32,6 +33,7 @@ import Network.HTTP.Types
 import qualified Blaze.ByteString.Builder.Char.Utf8 as Builder
 
 -- TODO
+import System.Random -- for testCreatePoints
 import qualified Data.ByteString.Char8 as BS
 import System.IO.Unsafe
 token = unsafePerformIO (BS.init <$> BS.readFile "token")
@@ -203,6 +205,14 @@ data PrePoint = PrePoint
 	, preRequestID :: Maybe Text
 	} deriving (Eq, Ord, Show, Read)
 
+instance ToJSON PrePoint where
+	toJSON p = object $
+		[ "timestamp" .= preTimestamp p
+		, "value"     .= preValue     p
+		, "comment"   .= preComment   p
+		] ++
+		[ "requestid" .= requestid | Just requestid <- [preRequestID p]]
+
 instance (ts ~ Integer, v ~ Double) => Parameters (ts -> v -> PrePoint) where
 	with ts v = PrePoint ts v def def
 instance v ~ Double => Parameters (IO (v -> PrePoint)) where
@@ -233,7 +243,8 @@ data CreatePointsParameters = CreatePointsParameters
 	, createPointsPre  :: [PrePoint]
 	}
 
-instance Default CreatePointsParameters where def = CreatePointsParameters def def def
+instance (goal ~ Text) => Parameters (goal -> CreatePointsParameters) where
+	with t = CreatePointsParameters def t def
 
 createPoint , createPointNotify  :: Monad m => CreatePointParameters  -> Request m
 createPoints, createPointsNotify :: Monad m => CreatePointsParameters -> Request m
@@ -251,13 +262,17 @@ createPointInternal sendmail p = urlEncodedBodyText
 	-- TODO: unify with the other occurrence of users/me/goals/goal-name/datapoints
 	(baseReq ["users", maybeMe createPointUser p, "goals", createPointGoal p, "datapoints"])
 
--- TODO
-createPoints       = undefined
-createPointsNotify = undefined
+createPointsNotify = createPointsInternal True
+createPoints       = createPointsInternal False
+
+createPointsInternal sendmail p = urlEncodedBody
+	([("datapoints", toStrict . encode . createPointsPre $ p)] ++
+	 [("sendmail"  , "true") | sendmail]
+	)
+	(baseReq ["users", maybeMe createPointsUser p, "goals", createPointsGoal p, "datapoints", "create_all"])
 
 instance Parameters LevelOfGoalDetail      where with = def
 instance Parameters UserParameters         where with = def
-instance Parameters CreatePointsParameters where with = def
 
 testPoly :: FromJSON a => Request (ResourceT IO) -> IO (Maybe a)
 testPoly r = do
@@ -273,4 +288,13 @@ testUser        = testPoly . user        $   with
 testPoint       = testPoly . points      $   with "read-papers"
 testCreatePoint = testPoly . createPoint =<< with "apitest" 1
 
-test = testCreatePoint
+-- TODO: for some reason, the requested ids aren't actually being requested
+testCreatePoints :: IO (Maybe [Point])
+testCreatePoints = do
+	p1 <- with 1
+	p2 <- with 1
+	n  <- randomIO :: IO Integer
+	let params = (with "apitest") { createPointsPre = [p1, p2 { preRequestID = Just (textShow n) }]}
+	testPoly (createPoints params)
+
+test = testCreatePoints
