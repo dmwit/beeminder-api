@@ -241,7 +241,7 @@ data CreatePointsParameters = CreatePointsParameters
 	{ createPointsUser :: Maybe Text
 	, createPointsGoal :: Text
 	, createPointsPre  :: [PrePoint]
-	}
+	} deriving (Eq, Ord, Show, Read)
 
 instance (goal ~ Text) => Parameters (goal -> CreatePointsParameters) where
 	with t = CreatePointsParameters def t def
