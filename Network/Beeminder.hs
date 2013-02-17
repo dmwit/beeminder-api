@@ -61,10 +61,25 @@ req & q
 -- * all times are an Integer representing a Unix timestamp
 -- * something about requested IDs, like how to request them and how to use them -- can they be used anywhere a normal ID can?
 
-class Resource a where
-	_ID        :: Simple Lens a Text
-	_UpdatedAt :: Simple Lens a Integer -- ^ you can use this to decide whether or not to use cached information
+class HasID             a where _ID             :: Simple Lens a Text
+class HasUpdatedAt      a where _UpdatedAt      :: Simple Lens a Integer -- ^ you can use this to decide whether or not to use cached information
+class HasName           a where _Name           :: Simple Lens a Text
+class HasTimezone       a where _Timezone       :: Simple Lens a Text
+class HasUsername       a where _Username       :: Simple Lens a (Maybe Text)
+class HasGoals          a where _Goals          :: Simple Lens a UserGoals
+class HasGoalsFilter    a where _GoalsFilter    :: Simple Lens a (Maybe Burner)
+class HasLevelOfDetail  a where _LevelOfDetail  :: Simple Lens a LevelOfGoalDetail
+class HasDatapointCount a where _DatapointCount :: Simple Lens a (Maybe Integer)
+class HasTimestamp      a where _Timestamp      :: Simple Lens a Integer
+class HasValue          a where _Value          :: Simple Lens a Double
+class HasComment        a where _Comment        :: Simple Lens a Text
+class HasRequestID      a where _RequestID      :: Simple Lens a (Maybe Text)
+class HasGoal           a where _Goal           :: Simple Lens a Text
+class HasPointRequest   a where _PointRequest   :: Simple Lens a PointRequest
+class HasPointRequests  a where _PointRequests  :: Simple Lens a [PointRequest]
 
+-- TODO: get rid of this and just use Default with undefined bits in and let
+-- people override them
 -- | This is like data-default's 'Default' class, but for types that may not
 -- always have a reasonable default for every field. For example, if @Foo@ has
 -- such a field, there will be an instance for a function type returning @Foo@
@@ -81,19 +96,22 @@ data UserGoals
 -- | the '_UpdatedAt' value is the upper bound of all updates -- even nested
 -- ones to goals, datapoints, etc.
 data User = User
-	{ username      :: Text
-	, timezone      :: Text
-	, goals         :: UserGoals
-	, userID        :: Text
-	, userUpdatedAt :: Integer
+	{ uName      :: Text
+	, uTimezone  :: Text
+	, uGoals     :: UserGoals
+	, uID        :: Text
+	, uUpdatedAt :: Integer
 	} deriving (Eq, Ord, Show, Read)
 
-instance Resource User where
-	_ID        = lens userID        (\s b -> s { userID        = b })
-	_UpdatedAt = lens userUpdatedAt (\s b -> s { userUpdatedAt = b })
+instance HasName      User where _Name      = lens uName      (\s b -> s { uName      = b })
+instance HasTimezone  User where _Timezone  = lens uTimezone  (\s b -> s { uTimezone  = b })
+instance HasGoals     User where _Goals     = lens uGoals     (\s b -> s { uGoals     = b })
+instance HasID        User where _ID        = lens uID        (\s b -> s { uID        = b })
+instance HasUpdatedAt User where _UpdatedAt = lens uUpdatedAt (\s b -> s { uUpdatedAt = b })
 
 -- internal type used to get a free list instance when parsing the Diff part of UserGoals
-data ID = ID { unID :: Text } deriving (Eq, Ord, Show, Read)
+data ID = ID { idID :: Text } deriving (Eq, Ord, Show, Read)
+instance HasID    ID where _ID = lens idID (\s b -> s { idID = b })
 instance FromJSON ID where
 	parseJSON (Object v) = ID <$> v .: "id"
 	parseJSON o = typeMismatch "ID" o
@@ -107,7 +125,7 @@ instance FromJSON UserGoals where
 	parseJSON (Object v) = slugs <|> diff <|> hashes where
 		slugs  = Slugs  <$> v .: "goals"
 		hashes = Hashes <$> v .: "goals"
-		diff   = Diff   <$> v .: "goals" <*> (map unID <$> v .: "deleted_goals")
+		diff   = Diff   <$> v .: "goals" <*> (map idID <$> v .: "deleted_goals")
 	parseJSON o = typeMismatch "hash with goals (either a list of slugs or a list of goal objects)" o
 
 -- TODO: the implementation doesn't match the spec: it has "id" and
@@ -122,6 +140,7 @@ instance FromJSON User where
 	parseJSON o = typeMismatch "user object" o
 
 data Burner = Front | Back deriving (Eq, Ord, Show, Read, Bounded, Enum)
+
 -- TODO: list the attributes that you still get with 'skinny' (and test a call with skinny=True)
 data LevelOfGoalDetail
 	= JustTheSlugs      -- ^ minimal detail: just the "slug" (the part that goes in a URL)
@@ -134,18 +153,25 @@ data LevelOfGoalDetail
 		, skinny :: Bool    -- ^ when 'True', return only each goal's latest data point and a subset of the attributes for each goal
 		}
 	deriving (Eq, Ord, Show, Read)
-data UserParameters = UserParameters
-	{ userToGet       :: Maybe Text        -- ^ 'Nothing' means \"whoever owns the API token\"
-	, goalsFilter     :: Maybe Burner      -- ^ 'Nothing' means \"all goals\"; the 'Front' and 'Back' 'Burner's are the goals above and below the fold in the web interface
-	, levelOfDetail   :: LevelOfGoalDetail -- ^ how much information do you want about the user's goals?
-	, datapointsCount :: Maybe Integer     -- ^ 'Nothing' means return all data points; 'Just' @n@ will return only the @n@ most recently added (not most recently timestamped!) data points
-	} deriving (Eq, Ord, Show, Read)
 
 instance Default LevelOfGoalDetail where def = JustTheSlugs
-instance Default UserParameters    where def = UserParameters def def def def
 
-maybeMe :: (a -> Maybe Text) -> (a -> Text)
-maybeMe f v = fromMaybe "me" (f v)
+data UserParameters = UserParameters
+	{ upUsername       :: Maybe Text        -- ^ 'Nothing' means \"whoever owns the API token\"
+	, upGoalsFilter    :: Maybe Burner      -- ^ 'Nothing' means \"all goals\"; the 'Front' and 'Back' 'Burner's are the goals above and below the fold in the web interface
+	, upLevelOfDetail  :: LevelOfGoalDetail -- ^ how much information do you want about the user's goals?
+	, upDatapointCount :: Maybe Integer     -- ^ 'Nothing' means return all data points; 'Just' @n@ will return only the @n@ most recently added (not most recently timestamped!) data points
+	} deriving (Eq, Ord, Show, Read)
+
+instance Default UserParameters where def = UserParameters def def def def
+
+instance HasUsername       UserParameters where _Username       = lens upUsername       (\s b -> s { upUsername       = b })
+instance HasGoalsFilter    UserParameters where _GoalsFilter    = lens upGoalsFilter    (\s b -> s { upGoalsFilter    = b })
+instance HasLevelOfDetail  UserParameters where _LevelOfDetail  = lens upLevelOfDetail  (\s b -> s { upLevelOfDetail  = b })
+instance HasDatapointCount UserParameters where _DatapointCount = lens upDatapointCount (\s b -> s { upDatapointCount = b })
+
+maybeMe :: HasUsername a => a -> Text
+maybeMe v = fromMaybe "me" (view _Username v)
 
 textShow, lowerShow :: Show a => a -> Text
 textShow  = fromString . show
@@ -153,30 +179,33 @@ lowerShow = fromString . map toLower . show
 
 user :: Monad m => UserParameters -> Request m
 user p
-	= baseReq ["users", maybeMe userToGet p]
-	& case levelOfDetail p of
+	= baseReq ["users", maybeMe p]
+	& case view _LevelOfDetail p of
 	  	JustTheSlugs      -> []
 	  	EverythingCurrent -> [("associations", "true")]
 	  	DiffSince t d     -> [("diff_since", lowerShow t), ("skinny", lowerShow d)]
-	++ [("goals_filter",     lowerShow b) | Just b <- [goalsFilter     p]]
-	++ [("datapoints_count", lowerShow n) | Just n <- [datapointsCount p]]
+	++ [("goals_filter",     lowerShow b) | Just b <- [view _GoalsFilter    p]]
+	++ [("datapoints_count", lowerShow n) | Just n <- [view _DatapointCount p]]
 
 -- TODO
 data Goal = Goal deriving (Eq, Ord, Show, Read)
 instance FromJSON Goal where parseJSON _ = return Goal
 
 data Point = Point
-	{ timestamp      :: Integer
-	, value          :: Double
-	, comment        :: Text
-	, requestID      :: Maybe Text
-	, pointID        :: Text
-	, pointUpdatedAt :: Integer
+	{ pTimestamp :: Integer
+	, pValue     :: Double
+	, pComment   :: Text
+	, pRequestID :: Maybe Text
+	, pID        :: Text
+	, pUpdatedAt :: Integer
 	} deriving (Eq, Ord, Show, Read)
 
-instance Resource Point where
-	_ID        = lens pointID        (\s b -> s { pointID        = b })
-	_UpdatedAt = lens pointUpdatedAt (\s b -> s { pointUpdatedAt = b })
+instance HasTimestamp Point where _Timestamp = lens pTimestamp (\s b -> s { pTimestamp = b })
+instance HasValue     Point where _Value     = lens pValue     (\s b -> s { pValue     = b })
+instance HasComment   Point where _Comment   = lens pComment   (\s b -> s { pComment   = b })
+instance HasRequestID Point where _RequestID = lens pRequestID (\s b -> s { pRequestID = b })
+instance HasID        Point where _ID        = lens pID        (\s b -> s { pID        = b })
+instance HasUpdatedAt Point where _UpdatedAt = lens pUpdatedAt (\s b -> s { pUpdatedAt = b })
 
 instance FromJSON Point where
 	parseJSON o@(Object v) = Point
@@ -189,43 +218,53 @@ instance FromJSON Point where
 	parseJSON o = typeMismatch "datapoint" o
 
 data PointsParameters = PointsParameters
-	{ pointsUser :: Maybe Text
-	, pointsGoal :: Text
+	{ ppUsername :: Maybe Text
+	, ppGoal     :: Text
 	} deriving (Eq, Ord, Show, Read)
 
 instance goal ~ Text => Parameters (goal -> PointsParameters) where with = PointsParameters def
 
-points :: Monad m => PointsParameters -> Request m
-points p = baseReq ["users", maybeMe pointsUser p, "goals", pointsGoal p, "datapoints"]
+instance HasUsername PointsParameters where _Username = lens ppUsername (\s b -> s { ppUsername = b })
+instance HasGoal     PointsParameters where _Goal     = lens ppGoal     (\s b -> s { ppGoal     = b })
 
-data PrePoint = PrePoint
-	{ preTimestamp :: Integer
-	, preValue     :: Double
-	, preComment   :: Text
-	, preRequestID :: Maybe Text
+points :: Monad m => PointsParameters -> Request m
+points p = baseReq ["users", maybeMe p, "goals", view _Goal p, "datapoints"]
+
+data PointRequest = PointRequest
+	{ prTimestamp :: Integer
+	, prValue     :: Double
+	, prComment   :: Text
+	, prRequestID :: Maybe Text
 	} deriving (Eq, Ord, Show, Read)
 
-instance ToJSON PrePoint where
-	toJSON p = object $
-		[ "timestamp" .= preTimestamp p
-		, "value"     .= preValue     p
-		, "comment"   .= preComment   p
-		] ++
-		[ "requestid" .= requestid | Just requestid <- [preRequestID p]]
+instance HasTimestamp PointRequest where _Timestamp = lens prTimestamp (\s b -> s { prTimestamp = b })
+instance HasValue     PointRequest where _Value     = lens prValue     (\s b -> s { prValue     = b })
+instance HasComment   PointRequest where _Comment   = lens prComment   (\s b -> s { prComment   = b })
+instance HasRequestID PointRequest where _RequestID = lens prRequestID (\s b -> s { prRequestID = b })
 
-instance (ts ~ Integer, v ~ Double) => Parameters (ts -> v -> PrePoint) where
-	with ts v = PrePoint ts v def def
-instance v ~ Double => Parameters (IO (v -> PrePoint)) where
+instance ToJSON PointRequest where
+	toJSON p = object $
+		[ "timestamp" .= view _Timestamp p
+		, "value"     .= view _Value     p
+		, "comment"   .= view _Comment   p
+		] ++
+		[ "requestid" .= requestid | Just requestid <- [view _RequestID p]]
+
+instance (ts ~ Integer, v ~ Double) => Parameters (ts -> v -> PointRequest) where
+	with ts v = PointRequest ts v def def
+instance v ~ Double => Parameters (IO (v -> PointRequest)) where
 	with = with . round <$> liftIO getPOSIXTime
-instance v ~ Double => Parameters (v -> IO PrePoint) where
+instance v ~ Double => Parameters (v -> IO PointRequest) where
 	with v = ($v) <$> with
 
--- TODO: need a more scalable and consistent namespacing solution... (that's
--- why we've got the whole "lens" dependency, though, right?)
+-- TODO: perhaps we shouldn't have separate createPoint and createPoints! After
+-- all, the latter completely subsumes the former, and we can internally check
+-- the length of the list to decide what to do if the single-point creation API
+-- call turns out to be better for some reason.
 data CreatePointParameters = CreatePointParameters
-	{ createPointUser :: Maybe Text
-	, createPointGoal :: Text
-	, createPointPre  :: PrePoint
+	{ cppUsername     :: Maybe Text
+	, cppGoal         :: Text
+	, cppPointRequest :: PointRequest
 	} deriving (Eq, Ord, Show, Read)
 
 instance (goal ~ Text, ts ~ Integer, v ~ Double) => Parameters (goal -> ts -> v -> CreatePointParameters) where
@@ -237,14 +276,26 @@ instance (goal ~ Text, v ~ Double) => Parameters (goal -> IO (v -> CreatePointPa
 instance (goal ~ Text, v ~ Double) => Parameters (goal -> v -> IO CreatePointParameters) where
 	with goal v = ($v) <$> with goal
 
+instance HasUsername     CreatePointParameters where _Username     = lens cppUsername     (\s b -> s { cppUsername     = b })
+instance HasGoal         CreatePointParameters where _Goal         = lens cppGoal         (\s b -> s { cppGoal         = b })
+instance HasPointRequest CreatePointParameters where _PointRequest = lens cppPointRequest (\s b -> s { cppPointRequest = b })
+instance HasTimestamp    CreatePointParameters where _Timestamp    = _PointRequest . _Timestamp
+instance HasValue        CreatePointParameters where _Value        = _PointRequest . _Value
+instance HasComment      CreatePointParameters where _Comment      = _PointRequest . _Comment
+instance HasRequestID    CreatePointParameters where _RequestID    = _PointRequest . _RequestID
+
 data CreatePointsParameters = CreatePointsParameters
-	{ createPointsUser :: Maybe Text
-	, createPointsGoal :: Text
-	, createPointsPre  :: [PrePoint]
+	{ cpspUsername      :: Maybe Text
+	, cpspGoal          :: Text
+	, cpspPointRequests :: [PointRequest]
 	} deriving (Eq, Ord, Show, Read)
 
 instance (goal ~ Text) => Parameters (goal -> CreatePointsParameters) where
 	with t = CreatePointsParameters def t def
+
+instance HasUsername      CreatePointsParameters where _Username      = lens cpspUsername      (\s b -> s { cpspUsername      = b })
+instance HasGoal          CreatePointsParameters where _Goal          = lens cpspGoal          (\s b -> s { cpspGoal          = b })
+instance HasPointRequests CreatePointsParameters where _PointRequests = lens cpspPointRequests (\s b -> s { cpspPointRequests = b })
 
 createPoint , createPointNotify  :: Monad m => CreatePointParameters  -> Request m
 createPoints, createPointsNotify :: Monad m => CreatePointsParameters -> Request m
@@ -253,26 +304,27 @@ createPointNotify = createPointInternal True
 createPoint       = createPointInternal False
 
 createPointInternal sendmail p = urlEncodedBodyText
-	([("timestamp", (textShow . preTimestamp . createPointPre) p),
-	  ("value"    , (textShow . preValue     . createPointPre) p),
-	  ("comment"  , (           preComment   . createPointPre) p)] ++
-	 [("requestid", r) | Just r <- [preRequestID (createPointPre p)]] ++
+	([("timestamp", (textShow . view _Timestamp) p),
+	  ("value"    , (textShow . view _Value    ) p),
+	  ("comment"  , (           view _Comment  ) p)] ++
+	 [("requestid", r) | Just r <- [view _RequestID p]] ++
 	 [("sendmail" , "true") | sendmail]
 	)
 	-- TODO: unify with the other occurrence of users/me/goals/goal-name/datapoints
-	(baseReq ["users", maybeMe createPointUser p, "goals", createPointGoal p, "datapoints"])
+	(baseReq ["users", maybeMe p, "goals", view _Goal p, "datapoints"])
 
 createPointsNotify = createPointsInternal True
 createPoints       = createPointsInternal False
 
+createPointsInternal :: Monad m => Bool -> CreatePointsParameters -> Request m
 createPointsInternal sendmail p = urlEncodedBody
-	([("datapoints", toStrict . encode . createPointsPre $ p)] ++
+	([("datapoints", toStrict . encode . view _PointRequests $ p)] ++
 	 [("sendmail"  , "true") | sendmail]
 	)
-	(baseReq ["users", maybeMe createPointsUser p, "goals", createPointsGoal p, "datapoints", "create_all"])
+	(baseReq ["users", maybeMe p, "goals", view _Goal p, "datapoints", "create_all"])
 
-instance Parameters LevelOfGoalDetail      where with = def
-instance Parameters UserParameters         where with = def
+instance Parameters LevelOfGoalDetail where with = def
+instance Parameters UserParameters    where with = def
 
 testPoly :: FromJSON a => Request (ResourceT IO) -> IO (Maybe a)
 testPoly r = do
@@ -294,7 +346,7 @@ testCreatePoints = do
 	p1 <- with 1
 	p2 <- with 1
 	n  <- randomIO :: IO Integer
-	let params = (with "apitest") { createPointsPre = [p1, p2 { preRequestID = Just (textShow n) }]}
+	let params = set _PointRequests [p1, set _RequestID (Just (textShow n)) p2] (with "apitest")
 	testPoly (createPoints params)
 
 test = testCreatePoints
