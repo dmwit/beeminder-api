@@ -78,15 +78,6 @@ class HasGoal           a where _Goal           :: Simple Lens a Text
 class HasPointRequest   a where _PointRequest   :: Simple Lens a PointRequest
 class HasPointRequests  a where _PointRequests  :: Simple Lens a [PointRequest]
 
--- TODO: get rid of this and just use Default with undefined bits in and let
--- people override them
--- | This is like data-default's 'Default' class, but for types that may not
--- always have a reasonable default for every field. For example, if @Foo@ has
--- such a field, there will be an instance for a function type returning @Foo@
--- or an instance for @IO Foo@ or similar. When a type does have good defaults
--- for all fields, it will instantiate both this and 'Default'.
-class Parameters a where with :: a
-
 data UserGoals
 	= Slugs  [Text]        -- ^ just the short names (use 'JustTheSlugs')
 	| Hashes [Goal]        -- ^ information about all currently existing goals (use 'EverythingCurrent')
@@ -217,12 +208,13 @@ instance FromJSON Point where
 		<*> v .: "updated_at"
 	parseJSON o = typeMismatch "datapoint" o
 
+-- | You will not like the '_Goal' you get from the 'Default' instance.
 data PointsParameters = PointsParameters
 	{ ppUsername :: Maybe Text
 	, ppGoal     :: Text
 	} deriving (Eq, Ord, Show, Read)
 
-instance goal ~ Text => Parameters (goal -> PointsParameters) where with = PointsParameters def
+instance Default PointsParameters where def = PointsParameters def def
 
 instance HasUsername PointsParameters where _Username = lens ppUsername (\s b -> s { ppUsername = b })
 instance HasGoal     PointsParameters where _Goal     = lens ppGoal     (\s b -> s { ppGoal     = b })
@@ -230,12 +222,16 @@ instance HasGoal     PointsParameters where _Goal     = lens ppGoal     (\s b ->
 points :: Monad m => PointsParameters -> Request m
 points p = baseReq ["users", maybeMe p, "goals", view _Goal p, "datapoints"]
 
+-- | You will not like the '_Timestamp' or '_Value' you get from the
+-- 'Default' instance. You may like 'now'.
 data PointRequest = PointRequest
 	{ prTimestamp :: Integer
 	, prValue     :: Double
 	, prComment   :: Text
 	, prRequestID :: Maybe Text
 	} deriving (Eq, Ord, Show, Read)
+
+instance Default PointRequest where def = PointRequest def def def def
 
 instance HasTimestamp PointRequest where _Timestamp = lens prTimestamp (\s b -> s { prTimestamp = b })
 instance HasValue     PointRequest where _Value     = lens prValue     (\s b -> s { prValue     = b })
@@ -250,31 +246,24 @@ instance ToJSON PointRequest where
 		] ++
 		[ "requestid" .= requestid | Just requestid <- [view _RequestID p]]
 
-instance (ts ~ Integer, v ~ Double) => Parameters (ts -> v -> PointRequest) where
-	with ts v = PointRequest ts v def def
-instance v ~ Double => Parameters (IO (v -> PointRequest)) where
-	with = with . round <$> liftIO getPOSIXTime
-instance v ~ Double => Parameters (v -> IO PointRequest) where
-	with v = ($v) <$> with
+-- | Set the timestamp to the current time.
+now :: (MonadIO m, HasTimestamp a) => a -> m a
+now a = liftIO $ flip (set _Timestamp) a . round <$> getPOSIXTime
 
 -- TODO: perhaps we shouldn't have separate createPoint and createPoints! After
 -- all, the latter completely subsumes the former, and we can internally check
 -- the length of the list to decide what to do if the single-point creation API
 -- call turns out to be better for some reason.
+
+-- | You will not like the '_Goal', '_Timestamp', or '_Value' you get from the
+-- 'Default' instance. You may like 'now'.
 data CreatePointParameters = CreatePointParameters
 	{ cppUsername     :: Maybe Text
 	, cppGoal         :: Text
 	, cppPointRequest :: PointRequest
 	} deriving (Eq, Ord, Show, Read)
 
-instance (goal ~ Text, ts ~ Integer, v ~ Double) => Parameters (goal -> ts -> v -> CreatePointParameters) where
-	with goal ts v = CreatePointParameters def goal (with ts v)
-instance (goal ~ Text, v ~ Double) => Parameters (IO (goal -> v -> CreatePointParameters)) where
-	with = (\f goal -> CreatePointParameters def goal . f) <$> with
-instance (goal ~ Text, v ~ Double) => Parameters (goal -> IO (v -> CreatePointParameters)) where
-	with goal = ($goal) <$> with
-instance (goal ~ Text, v ~ Double) => Parameters (goal -> v -> IO CreatePointParameters) where
-	with goal v = ($v) <$> with goal
+instance Default CreatePointParameters where def = CreatePointParameters def def def
 
 instance HasUsername     CreatePointParameters where _Username     = lens cppUsername     (\s b -> s { cppUsername     = b })
 instance HasGoal         CreatePointParameters where _Goal         = lens cppGoal         (\s b -> s { cppGoal         = b })
@@ -284,14 +273,15 @@ instance HasValue        CreatePointParameters where _Value        = _PointReque
 instance HasComment      CreatePointParameters where _Comment      = _PointRequest . _Comment
 instance HasRequestID    CreatePointParameters where _RequestID    = _PointRequest . _RequestID
 
+-- | You will not like the '_Goal' or '_PointRequests' you get from the
+-- 'Default' instance.
 data CreatePointsParameters = CreatePointsParameters
 	{ cpspUsername      :: Maybe Text
 	, cpspGoal          :: Text
 	, cpspPointRequests :: [PointRequest]
 	} deriving (Eq, Ord, Show, Read)
 
-instance (goal ~ Text) => Parameters (goal -> CreatePointsParameters) where
-	with t = CreatePointsParameters def t def
+instance Default CreatePointsParameters where def = CreatePointsParameters def def def
 
 instance HasUsername      CreatePointsParameters where _Username      = lens cpspUsername      (\s b -> s { cpspUsername      = b })
 instance HasGoal          CreatePointsParameters where _Goal          = lens cpspGoal          (\s b -> s { cpspGoal          = b })
@@ -323,9 +313,6 @@ createPointsInternal sendmail p = urlEncodedBody
 	)
 	(baseReq ["users", maybeMe p, "goals", view _Goal p, "datapoints", "create_all"])
 
-instance Parameters LevelOfGoalDetail where with = def
-instance Parameters UserParameters    where with = def
-
 testPoly :: FromJSON a => Request (ResourceT IO) -> IO (Maybe a)
 testPoly r = do
 	man <- newManager def
@@ -336,17 +323,17 @@ testUser        :: IO (Maybe User)
 testPoint       :: IO (Maybe [Point])
 testCreatePoint :: IO (Maybe Point)
 
-testUser        = testPoly . user        $   with
-testPoint       = testPoly . points      $   with "read-papers"
-testCreatePoint = testPoly . createPoint =<< with "apitest" 1
+testUser        = testPoly . user $ def
+testPoint       = testPoly . points      . set _Goal "read-papers" $ def
+testCreatePoint = testPoly . createPoint . set _Goal "apitest"     . set _Value 1 =<< now def
 
 -- TODO: for some reason, the requested ids aren't actually being requested
 testCreatePoints :: IO (Maybe [Point])
 testCreatePoints = do
-	p1 <- with 1
-	p2 <- with 1
+	p1 <- set _Value 1 <$> now def
+	p2 <- set _Value 1 <$> now def
 	n  <- randomIO :: IO Integer
-	let params = set _PointRequests [p1, set _RequestID (Just (textShow n)) p2] (with "apitest")
+	let params = set _PointRequests [p1, set _RequestID (Just (textShow n)) p2] . set _Goal "apitest" $ def
 	testPoly (createPoints params)
 
 test = testCreatePoints
