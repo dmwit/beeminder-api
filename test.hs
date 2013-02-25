@@ -3,13 +3,13 @@ import Control.Lens
 import Data.Default
 import Data.String
 import Network.Beeminder
-import System.IO.Unsafe
 import System.Random
 
-import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString as BS
 
-token = unsafePerformIO (BS.init <$> BS.readFile "token")
-run f = runBeeminder token . f
+run f p = do
+	bs <- BS.readFile "token"
+	runBeeminder (BS.init bs) (f p)
 
 testUser         = run user        $ def
 testPoints       = run points      $ set _Goal "read-papers" def
