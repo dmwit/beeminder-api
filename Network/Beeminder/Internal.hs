@@ -22,12 +22,8 @@ import Data.Time.Clock.POSIX
 import Network.HTTP.Conduit
 import Network.HTTP.Types
 
+import qualified Data.ByteString as BS
 import qualified Blaze.ByteString.Builder.Char.Utf8 as Builder
-
--- TODO
-import qualified Data.ByteString.Char8 as BS
-import System.IO.Unsafe
-token = unsafePerformIO (BS.init <$> BS.readFile "token")
 
 -- things that ought to be in somebody else's module/package {{{
 renderSimpleQueryText b xs = toByteString (renderQueryText b [(x, Just y) | (x, y) <- xs])
@@ -35,7 +31,9 @@ urlEncodedBodyText      xs = urlEncodedBody [(encodeUtf8 x, encodeUtf8 y) | (x, 
 instance Default Text where def = ""
 -- }}}
 
-baseReq segments = def
+type Token = ByteString
+
+baseReq token segments = def
 	{ secure      = True
 	, host        = "www.beeminder.com"
 	, port        = 443
@@ -159,9 +157,9 @@ textShow, lowerShow :: Show a => a -> Text
 textShow  = fromString . show
 lowerShow = fromString . map toLower . show
 
-user :: Monad m => UserParameters -> Request m
-user p
-	= baseReq ["users", maybeMe p]
+user :: Monad m => Token -> UserParameters -> Request m
+user t p
+	= baseReq t ["users", maybeMe p]
 	& case view _LevelOfDetail p of
 	  	JustTheSlugs      -> []
 	  	EverythingCurrent -> [("associations", "true")]
@@ -210,8 +208,8 @@ instance Default PointsParameters where def = PointsParameters def def
 instance HasUsername PointsParameters where _Username = lens ppUsername (\s b -> s { ppUsername = b })
 instance HasGoal     PointsParameters where _Goal     = lens ppGoal     (\s b -> s { ppGoal     = b })
 
-points :: Monad m => PointsParameters -> Request m
-points p = baseReq ["users", maybeMe p, "goals", view _Goal p, "datapoints"]
+points :: Monad m => Token -> PointsParameters -> Request m
+points t p = baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints"]
 
 -- | You will not like the '_Timestamp' or '_Value' you get from the
 -- 'Default' instance. You may like 'now'.
@@ -278,13 +276,13 @@ instance HasUsername      CreatePointsParameters where _Username      = lens cps
 instance HasGoal          CreatePointsParameters where _Goal          = lens cpspGoal          (\s b -> s { cpspGoal          = b })
 instance HasPointRequests CreatePointsParameters where _PointRequests = lens cpspPointRequests (\s b -> s { cpspPointRequests = b })
 
-createPoint , createPointNotify  :: Monad m => CreatePointParameters  -> Request m
-createPoints, createPointsNotify :: Monad m => CreatePointsParameters -> Request m
+createPoint , createPointNotify  :: Monad m => Token -> CreatePointParameters  -> Request m
+createPoints, createPointsNotify :: Monad m => Token -> CreatePointsParameters -> Request m
 
 createPointNotify = createPointInternal True
 createPoint       = createPointInternal False
 
-createPointInternal sendmail p = urlEncodedBodyText
+createPointInternal sendmail t p = urlEncodedBodyText
 	([("timestamp", (textShow . view _Timestamp) p),
 	  ("value"    , (textShow . view _Value    ) p),
 	  ("comment"  , (           view _Comment  ) p)] ++
@@ -292,14 +290,13 @@ createPointInternal sendmail p = urlEncodedBodyText
 	 [("sendmail" , "true") | sendmail]
 	)
 	-- TODO: unify with the other occurrence of users/me/goals/goal-name/datapoints
-	(baseReq ["users", maybeMe p, "goals", view _Goal p, "datapoints"])
+	(baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints"])
 
 createPointsNotify = createPointsInternal True
 createPoints       = createPointsInternal False
 
-createPointsInternal :: Monad m => Bool -> CreatePointsParameters -> Request m
-createPointsInternal sendmail p = urlEncodedBody
+createPointsInternal sendmail t p = urlEncodedBody
 	([("datapoints", toStrict . encode . view _PointRequests $ p)] ++
 	 [("sendmail"  , "true") | sendmail]
 	)
-	(baseReq ["users", maybeMe p, "goals", view _Goal p, "datapoints", "create_all"])
+	(baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints", "create_all"])

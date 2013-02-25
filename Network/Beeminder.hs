@@ -18,7 +18,10 @@ import Network.HTTP.Conduit
 import Network.Beeminder.Internal
 
 -- TODO
+import qualified Data.ByteString.Char8 as BS
+import System.IO.Unsafe
 import System.Random -- for testCreatePoints
+token = unsafePerformIO (BS.init <$> BS.readFile "token")
 
 testPoly :: FromJSON a => Request (ResourceT IO) -> IO (Maybe a)
 testPoly r = do
@@ -30,9 +33,9 @@ testUser        :: IO (Maybe User)
 testPoint       :: IO (Maybe [Point])
 testCreatePoint :: IO (Maybe Point)
 
-testUser        = testPoly . user $ def
-testPoint       = testPoly . points      . set _Goal "read-papers" $ def
-testCreatePoint = testPoly . createPoint . set _Goal "apitest"     . set _Value 1 =<< now def
+testUser        = testPoly . user        token $ def
+testPoint       = testPoly . points      token . set _Goal "read-papers" $ def
+testCreatePoint = testPoly . createPoint token . set _Goal "apitest"     . set _Value 1 =<< now def
 
 -- TODO: for some reason, the requested ids aren't actually being requested
 testCreatePoints :: IO (Maybe [Point])
@@ -41,6 +44,6 @@ testCreatePoints = do
 	p2 <- set _Value 1 <$> now def
 	n  <- randomIO :: IO Integer
 	let params = set _PointRequests [p1, set _RequestID (Just (textShow n)) p2] . set _Goal "apitest" $ def
-	testPoly (createPoints params)
+	testPoly (createPoints token params)
 
 test = testCreatePoints
