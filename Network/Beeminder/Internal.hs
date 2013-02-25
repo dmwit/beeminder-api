@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, OverloadedStrings, NoMonomorphismRestriction, TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Network.Beeminder.Internal where
 
 import Blaze.ByteString.Builder
