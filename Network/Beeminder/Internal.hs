@@ -48,7 +48,7 @@ req & q
 
 -- TODO: make some top-level documentation with these details:
 -- * all times are an Integer representing a Unix timestamp
--- * something about requested IDs, like how to request them and how to use them -- can they be used anywhere a normal ID can?
+-- * something about requested IDs, like how to request them and how to use them -- can they be used anywhere a normal ID can? (answer: no, they cannot)
 
 class HasID             a where _ID             :: Simple Lens a Text
 class HasUpdatedAt      a where _UpdatedAt      :: Simple Lens a Integer -- ^ you can use this to decide whether or not to use cached information
@@ -282,12 +282,16 @@ createPoints, createPointsNotify :: Monad m => Token -> CreatePointsParameters -
 createPointNotify = createPointInternal True
 createPoint       = createPointInternal False
 
+tsvcArgs p =
+	[ ("timestamp", (textShow . view _Timestamp) p)
+	, ("value"    , (textShow . view _Value    ) p)
+	, ("comment"  , (           view _Comment  ) p)
+	]
+
 createPointInternal sendmail t p = urlEncodedBodyText
-	([("timestamp", (textShow . view _Timestamp) p),
-	  ("value"    , (textShow . view _Value    ) p),
-	  ("comment"  , (           view _Comment  ) p)] ++
-	 [("requestid", r) | Just r <- [view _RequestID p]] ++
-	 [("sendmail" , "true") | sendmail]
+	(  tsvcArgs p
+	++ [("requestid", r) | Just r <- [view _RequestID p]]
+	++ [("sendmail" , "true") | sendmail]
 	)
 	-- TODO: unify with the other occurrence of users/me/goals/goal-name/datapoints
 	(baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints"])
@@ -300,3 +304,47 @@ createPointsInternal sendmail t p = urlEncodedBody
 	 [("sendmail"  , "true") | sendmail]
 	)
 	(baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints", "create_all"])
+
+-- | You will not like the '_Goal', '_ID', '_Timestamp', or '_Value' you get
+-- from the 'Default' instance. You may like 'now'.
+data UpdatePointParameters = UpdatePointParameters
+	{ uppUsername  :: Maybe Text
+	, uppGoal      :: Text
+	, uppID        :: Text
+	, uppTimestamp :: Integer
+	, uppValue     :: Double
+	, uppComment   :: Text
+	} deriving (Eq, Ord, Show, Read)
+
+instance Default UpdatePointParameters where def = UpdatePointParameters def def def def def def
+
+instance HasUsername  UpdatePointParameters where _Username  = lens uppUsername  (\s b -> s { uppUsername  = b })
+instance HasGoal      UpdatePointParameters where _Goal      = lens uppGoal      (\s b -> s { uppGoal      = b })
+instance HasID        UpdatePointParameters where _ID        = lens uppID        (\s b -> s { uppID        = b })
+instance HasTimestamp UpdatePointParameters where _Timestamp = lens uppTimestamp (\s b -> s { uppTimestamp = b })
+instance HasValue     UpdatePointParameters where _Value     = lens uppValue     (\s b -> s { uppValue     = b })
+instance HasComment   UpdatePointParameters where _Comment   = lens uppComment   (\s b -> s { uppComment   = b })
+
+updatePoint :: Monad m => Token -> UpdatePointParameters -> Request m
+updatePoint t p = (urlEncodedBodyText
+	(tsvcArgs p)
+	(baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints", view _ID p])
+	) { method = "PUT" }
+
+-- TODO: is there some commonality that we can pull out from this and other parameters data types??
+-- | You will not like the '_Goal' or '_ID' you get from the 'Default'
+-- instance.
+data DeletePointParameters = DeletePointParameters
+	{ dppUsername :: Maybe Text
+	, dppGoal     :: Text
+	, dppID       :: Text
+	} deriving (Eq, Ord, Show, Read)
+
+instance Default DeletePointParameters where def = DeletePointParameters def def def
+
+instance HasUsername DeletePointParameters where _Username = lens dppUsername (\s b -> s { dppUsername = b })
+instance HasGoal     DeletePointParameters where _Goal     = lens dppGoal     (\s b -> s { dppGoal     = b })
+instance HasID       DeletePointParameters where _ID       = lens dppID       (\s b -> s { dppID       = b })
+
+deletePoint :: Monad m => Token -> DeletePointParameters -> Request m
+deletePoint t p = (baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints", view _ID p]) { method = "DELETE" }

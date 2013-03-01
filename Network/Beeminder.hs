@@ -5,7 +5,7 @@ module Network.Beeminder
 	, User(..)
 	, Burner(..)
 	, LevelOfGoalDetail(..)
-	, UserParameters(..)
+	, Point(..)
 	, Goal(..)
 	, Token
 	, HasID(..), HasUpdatedAt(..), HasName(..), HasTimezone(..), HasUsername(..), HasGoals(..), HasGoalsFilter(..), HasLevelOfDetail(..)
@@ -15,6 +15,7 @@ module Network.Beeminder
 	, points
 	, createPoint , createPointNotify
 	, createPoints, createPointsNotify
+	, updatePoint, deletePoint
 	, runBeeminder
 	) where
 
@@ -26,7 +27,7 @@ import Control.Monad.Trans.Maybe
 import Data.Aeson
 import Data.Conduit
 import Data.Default
-import Network.Beeminder.Internal hiding (user, points, createPoint, createPointNotify, createPoints, createPointsNotify)
+import Network.Beeminder.Internal hiding (user, points, createPoint, createPointNotify, createPoints, createPointsNotify, updatePoint, deletePoint)
 import Network.HTTP.Conduit
 import qualified Network.Beeminder.Internal as Internal
 
@@ -64,6 +65,8 @@ user   :: UserParameters   -> Beeminder User
 points :: PointsParameters -> Beeminder [Point]
 createPoint , createPointNotify  :: CreatePointParameters  -> Beeminder Point
 createPoints, createPointsNotify :: CreatePointsParameters -> Beeminder [Point]
+updatePoint :: UpdatePointParameters -> Beeminder Point
+deletePoint :: DeletePointParameters -> Beeminder Point
 
 user               = externalize Internal.user
 points             = externalize Internal.points
@@ -71,3 +74,5 @@ createPoint        = externalize Internal.createPoint
 createPointNotify  = externalize Internal.createPointNotify
 createPoints       = externalize Internal.createPoints
 createPointsNotify = externalize Internal.createPointsNotify
+updatePoint        = externalize Internal.updatePoint
+deletePoint        = externalize Internal.deletePoint
