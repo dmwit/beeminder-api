@@ -145,6 +145,7 @@ data UserParameters = UserParameters
 
 instance Default UserParameters where def = UserParameters def def def def
 
+-- TODO: look into using Control.Lens.TH.makeFields to reduce this boilerplate
 instance HasUsername       UserParameters where _Username       = lens upUsername       (\s b -> s { upUsername       = b })
 instance HasGoalsFilter    UserParameters where _GoalsFilter    = lens upGoalsFilter    (\s b -> s { upGoalsFilter    = b })
 instance HasLevelOfDetail  UserParameters where _LevelOfDetail  = lens upLevelOfDetail  (\s b -> s { upLevelOfDetail  = b })
