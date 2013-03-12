@@ -16,6 +16,7 @@ import Data.Default
 import Data.Maybe
 import Data.Monoid
 import Data.String
+import Data.Set (Set)
 import Data.Text (Text)
 import Data.Text.Encoding
 import Data.Time.Clock.POSIX
@@ -168,9 +169,72 @@ user t p
 	++ [("goals_filter",     lowerShow b) | Just b <- [view _GoalsFilter p]]
 	++ [("datapoints_count", lowerShow n) | Just n <- [view _PointCount  p]]
 
+data Timeframe = Year | Month | Week | Day | Hour deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data Direction = Up | Down                        deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data Aggregate = Last | First | Min | Max | Mean  deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data Behavior
+	= Exponential   -- ^ interpret rate as multiplicative rather than additive
+	| Cumulative    -- ^ plot values as the sum of the points
+	| Odometer      -- ^ treat zero as an odomoter reset rather than a literal 0
+	| Edgy          -- ^ initial data point goes at the road edge (not center)
+	| Noisy         -- ^ use points (not just rate) when computing road width
+	| StepLine      -- ^ use steppy-like line when rendering the graph
+	| Rosy          -- ^ show the optimistic rosy dots when rendering the graph
+	| MovingAverage -- ^ graph the moving average
+	| Aura          -- ^ render the turquoise confidence area
+	| Ephemeral     -- ^ garbage collect this goal after a bit
+	| Secret        -- ^ only the owner can see the goal
+	| SecretPoints  -- ^ only the owner can see the points
+	deriving (Eq, Ord, Show, Read, Bounded, Enum)
+
+data Target
+	= MissingDate  {                   tValue :: Double, tRate :: Double }
+	| MissingValue { tDate :: Integer,                   tRate :: Double }
+	| MissingRate  { tDate :: Integer, tValue :: Double                  }
+	deriving (Eq, Ord, Show, Read)
+
+-- TODO: Goals don't match the spec: they have an "id", "graphsum", and "rah"
+-- fields. I wonder what they're for!
 -- TODO
-data Goal = Goal deriving (Eq, Ord, Show, Read)
-instance FromJSON Goal where parseJSON _ = return Goal
+data Goal = Goal
+	{ gID               :: Text
+	, gSlug             :: Text
+	, gUpdatedAt        :: Integer
+	, gBurner           :: Burner
+	, gTitle            :: Text
+	, gDate             :: Integer                   -- ^ of completion
+	, gValue            :: Double
+	, gRate             :: Double
+	, gRatePeriod       :: Timeframe
+	, gGraph            :: Text                      -- ^ URL of graph image TODO: can this be computed from gID?
+	, gThumb            :: Text                      -- ^ URL of graph thumb TODO: can this be computed from gID?
+	, gLoseDate         :: Integer                   -- ^ assuming no more data reported
+	, gPanic            :: Double                    -- ^ how many seconds before 'gLoseDate' to FREAK OUT
+	, gQueued           :: Bool                      -- ^ is graph still rendering?
+	, gPoints           :: [Point]                   -- ^ empty unless you explicitly ask for it not to be
+	, gPointCount       :: Integer
+	, gPledge           :: Double                    -- TODO: Integer? (and change gStepdownSchedule to match)
+	, gStartDate        :: Integer
+	, gStartValue       :: Double
+	, gCurrentDate      :: Integer
+	, gCurrentValue     :: Double
+	, gReportedDate     :: Integer
+	, gYaw              :: Direction                 -- ^ which side of the road is good?
+	, gSlope            :: Direction                 -- ^ which way is the road going? TODO: can this be inferred from gRate? (what happens when a downward-sloping graph gets dialed to an upward slope?)
+	, gLane             :: Integer
+	, gMathIsHard       :: (Integer, Double, Double) -- ^ date, value, and rate??? TODO: can this be inferred from gDate, gValue, gRate? if not, what's the difference??
+	, gSummary          :: (Text, Text, Text)        -- headsum, limsum, graphsum
+	, gWon              :: Bool                      -- TODO: can this be inferred from current date, gDate, and gLoseDate?
+	, gFrozen           :: Bool                      -- TODO: how does this differ from gLost...?
+	, gLost             :: Bool                      -- TODO: can this be inferred from current date, gDate, and gLoseDate? (what happens in the grace period?)
+	, gStepdownSchedule :: Maybe (Double, Integer)   -- ^ the current pledge (TODO: can this be inferred from gPledge?) and the date of a scheduled future stepdown, if any
+	, gRoad             :: [Target]
+	, gAggregate        :: Aggregate                 -- ^ what to do with multiple points on a given day
+	, gBehavior         :: Set Behavior
+	} deriving (Eq, Ord, Show, Read)
+
+-- TODO, obviously
+instance FromJSON Goal where parseJSON _ = return undefined
 
 data Point = Point
 	{ pTimestamp :: Integer
