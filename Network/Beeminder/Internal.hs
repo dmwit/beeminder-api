@@ -50,22 +50,22 @@ req & q
 -- * all times are an Integer representing a Unix timestamp
 -- * something about requested IDs, like how to request them and how to use them -- can they be used anywhere a normal ID can? (answer: no, they cannot)
 
-class HasID             a where _ID             :: Simple Lens a Text
-class HasUpdatedAt      a where _UpdatedAt      :: Simple Lens a Integer -- ^ you can use this to decide whether or not to use cached information
-class HasName           a where _Name           :: Simple Lens a Text
-class HasTimezone       a where _Timezone       :: Simple Lens a Text
-class HasUsername       a where _Username       :: Simple Lens a (Maybe Text)
-class HasGoals          a where _Goals          :: Simple Lens a UserGoals
-class HasGoalsFilter    a where _GoalsFilter    :: Simple Lens a (Maybe Burner)
-class HasLevelOfDetail  a where _LevelOfDetail  :: Simple Lens a LevelOfGoalDetail
-class HasDatapointCount a where _DatapointCount :: Simple Lens a (Maybe Integer)
-class HasTimestamp      a where _Timestamp      :: Simple Lens a Integer
-class HasValue          a where _Value          :: Simple Lens a Double
-class HasComment        a where _Comment        :: Simple Lens a Text
-class HasRequestID      a where _RequestID      :: Simple Lens a (Maybe Text)
-class HasGoal           a where _Goal           :: Simple Lens a Text
-class HasPointRequest   a where _PointRequest   :: Simple Lens a PointRequest
-class HasPointRequests  a where _PointRequests  :: Simple Lens a [PointRequest]
+class HasID            a where _ID            :: Simple Lens a Text
+class HasUpdatedAt     a where _UpdatedAt     :: Simple Lens a Integer -- ^ you can use this to decide whether or not to use cached information
+class HasName          a where _Name          :: Simple Lens a Text
+class HasTimezone      a where _Timezone      :: Simple Lens a Text
+class HasUsername      a where _Username      :: Simple Lens a (Maybe Text)
+class HasGoals         a where _Goals         :: Simple Lens a UserGoals
+class HasGoalsFilter   a where _GoalsFilter   :: Simple Lens a (Maybe Burner)
+class HasLevelOfDetail a where _LevelOfDetail :: Simple Lens a LevelOfGoalDetail
+class HasPointCount    a where _PointCount    :: Simple Lens a (Maybe Integer)
+class HasTimestamp     a where _Timestamp     :: Simple Lens a Integer
+class HasValue         a where _Value         :: Simple Lens a Double
+class HasComment       a where _Comment       :: Simple Lens a Text
+class HasRequestID     a where _RequestID     :: Simple Lens a (Maybe Text)
+class HasGoal          a where _Goal          :: Simple Lens a Text
+class HasPointRequest  a where _PointRequest  :: Simple Lens a PointRequest
+class HasPointRequests a where _PointRequests :: Simple Lens a [PointRequest]
 
 data UserGoals
 	= Slugs  [Text]        -- ^ just the short names (use 'JustTheSlugs')
@@ -74,7 +74,7 @@ data UserGoals
 	deriving (Eq, Ord, Show, Read)
 
 -- | the '_UpdatedAt' value is the upper bound of all updates -- even nested
--- ones to goals, datapoints, etc.
+-- ones to goals, points, etc.
 data User = User
 	{ uName      :: Text
 	, uTimezone  :: Text
@@ -129,7 +129,7 @@ data LevelOfGoalDetail
 	-- the above blank line and the below breech of style are intentional haddock workarounds
 	-- | maximal detail: report even about goals that have been deleted
 	| DiffSince
-		{ since  :: Integer -- ^ a Unix timestamp; show all the changes since that timestamp (new datapoints, deleted goals, etc.)
+		{ since  :: Integer -- ^ a Unix timestamp; show all the changes since that timestamp (new points, deleted goals, etc.)
 		, skinny :: Bool    -- ^ when 'True', return only each goal's latest data point and a subset of the attributes for each goal
 		}
 	deriving (Eq, Ord, Show, Read)
@@ -137,19 +137,19 @@ data LevelOfGoalDetail
 instance Default LevelOfGoalDetail where def = JustTheSlugs
 
 data UserParameters = UserParameters
-	{ upUsername       :: Maybe Text        -- ^ 'Nothing' means \"whoever owns the API token\"
-	, upGoalsFilter    :: Maybe Burner      -- ^ 'Nothing' means \"all goals\"; the 'Front' and 'Back' 'Burner's are the goals above and below the fold in the web interface
-	, upLevelOfDetail  :: LevelOfGoalDetail -- ^ how much information do you want about the user's goals?
-	, upDatapointCount :: Maybe Integer     -- ^ 'Nothing' means return all data points; 'Just' @n@ will return only the @n@ most recently added (not most recently timestamped!) data points
+	{ upUsername      :: Maybe Text        -- ^ 'Nothing' means \"whoever owns the API token\"
+	, upGoalsFilter   :: Maybe Burner      -- ^ 'Nothing' means \"all goals\"; the 'Front' and 'Back' 'Burner's are the goals above and below the fold in the web interface
+	, upLevelOfDetail :: LevelOfGoalDetail -- ^ how much information do you want about the user's goals?
+	, upPointCount    :: Maybe Integer     -- ^ 'Nothing' means return all data points; 'Just' @n@ will return only the @n@ most recently added (not most recently timestamped!) data points
 	} deriving (Eq, Ord, Show, Read)
 
 instance Default UserParameters where def = UserParameters def def def def
 
 -- TODO: look into using Control.Lens.TH.makeFields to reduce this boilerplate
-instance HasUsername       UserParameters where _Username       = lens upUsername       (\s b -> s { upUsername       = b })
-instance HasGoalsFilter    UserParameters where _GoalsFilter    = lens upGoalsFilter    (\s b -> s { upGoalsFilter    = b })
-instance HasLevelOfDetail  UserParameters where _LevelOfDetail  = lens upLevelOfDetail  (\s b -> s { upLevelOfDetail  = b })
-instance HasDatapointCount UserParameters where _DatapointCount = lens upDatapointCount (\s b -> s { upDatapointCount = b })
+instance HasUsername      UserParameters where _Username      = lens upUsername      (\s b -> s { upUsername      = b })
+instance HasGoalsFilter   UserParameters where _GoalsFilter   = lens upGoalsFilter   (\s b -> s { upGoalsFilter   = b })
+instance HasLevelOfDetail UserParameters where _LevelOfDetail = lens upLevelOfDetail (\s b -> s { upLevelOfDetail = b })
+instance HasPointCount    UserParameters where _PointCount    = lens upPointCount    (\s b -> s { upPointCount    = b })
 
 maybeMe :: HasUsername a => a -> Text
 maybeMe v = fromMaybe "me" (view _Username v)
@@ -165,8 +165,8 @@ user t p
 	  	JustTheSlugs      -> []
 	  	EverythingCurrent -> [("associations", "true")]
 	  	DiffSince t d     -> [("diff_since", lowerShow t), ("skinny", lowerShow d)]
-	++ [("goals_filter",     lowerShow b) | Just b <- [view _GoalsFilter    p]]
-	++ [("datapoints_count", lowerShow n) | Just n <- [view _DatapointCount p]]
+	++ [("goals_filter",     lowerShow b) | Just b <- [view _GoalsFilter p]]
+	++ [("datapoints_count", lowerShow n) | Just n <- [view _PointCount  p]]
 
 -- TODO
 data Goal = Goal deriving (Eq, Ord, Show, Read)
@@ -196,7 +196,7 @@ instance FromJSON Point where
 		<*> v .: "requestid"
 		<*> v .: "id"
 		<*> v .: "updated_at"
-	parseJSON o = typeMismatch "datapoint" o
+	parseJSON o = typeMismatch "point" o
 
 -- | You will not like the '_Goal' you get from the 'Default' instance.
 data PointsParameters = PointsParameters
