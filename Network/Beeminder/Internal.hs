@@ -13,6 +13,7 @@ import Data.ByteString.Lazy (toStrict)
 import Data.Char
 import Data.Conduit
 import Data.Default
+import Data.List
 import Data.Maybe
 import Data.Monoid
 import Data.String
@@ -23,8 +24,9 @@ import Data.Time.Clock.POSIX
 import Network.HTTP.Conduit
 import Network.HTTP.Types
 
-import qualified Data.ByteString as BS
 import qualified Blaze.ByteString.Builder.Char.Utf8 as Builder
+import qualified Data.ByteString as BS
+import qualified Data.Set        as Set
 
 -- things that ought to be in somebody else's module/package {{{
 renderSimpleQueryText b xs = toByteString (renderQueryText b [(x, Just y) | (x, y) <- xs])
@@ -170,8 +172,36 @@ user t p
 	++ [("datapoints_count", lowerShow n) | Just n <- [view _PointCount  p]]
 
 data Timeframe = Year | Month | Week | Day | Hour deriving (Eq, Ord, Show, Read, Bounded, Enum)
-data Direction = Up | Down                        deriving (Eq, Ord, Show, Read, Bounded, Enum)
 data Aggregate = Last | First | Min | Max | Mean  deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data Direction = Up | Down                        deriving (Eq, Ord, Show, Read, Bounded, Enum)
+
+instance FromJSON Timeframe where parseJSON = showStringChoices "timeframe" (take 1)
+instance FromJSON Aggregate where parseJSON = showStringChoices "aggregate" id
+instance FromJSON Direction where
+	parseJSON (Number (I   1 )) = return Up
+	parseJSON (Number (I (-1))) = return Down
+	parseJSON v = typeMismatch "direction (either 1 or -1)" v
+
+showStringChoices s f = stringChoices s [(f . map toLower . show $ a, a) | a <- [minBound .. maxBound]]
+stringChoices s cs_ v =
+	case v of
+		String t -> case lookup t cs of
+			Just r  -> return r
+			Nothing -> wrong
+		_ -> wrong
+	where
+	cs  = [(fromString n, r) | (n, r) <- cs_]
+	ns  = map fst cs
+	ns' = init ns
+	n   = last ns
+	wrong         = typeMismatch errorMessage v
+	errorMessage  = s <> " (" <> errorInternal <> ")"
+	errorInternal = case ns of
+		[]      -> "there are no values of this type!"
+		[n]     -> "must be " <> show n
+		[n, n'] -> "either " <> show n <> " or " <> show n'
+		_       -> "one of " <> intercalate "," (map show ns') <> ", or " <> show n
+
 data Behavior
 	= Exponential   -- ^ interpret rate as multiplicative rather than additive
 	| Cumulative    -- ^ plot values as the sum of the points
@@ -187,6 +217,26 @@ data Behavior
 	| SecretPoints  -- ^ only the owner can see the points
 	deriving (Eq, Ord, Show, Read, Bounded, Enum)
 
+parseBehaviorSet v = do
+	behaviors <- mapM (parseBehavior v) [minBound .. maxBound]
+	return (Set.fromList [b | (b, h) <- behaviors, polarity b h])
+	where
+	parseBehavior v b = (,) b <$> (v .: fieldName b)
+	fieldName Exponential   = "exprd"
+	fieldName Cumulative    = "kyoom"
+	fieldName Odometer      = "odom"
+	fieldName Edgy          = "edgy"
+	fieldName Noisy         = "noisy"
+	fieldName StepLine      = "steppy"
+	fieldName Rosy          = "rosy"
+	fieldName MovingAverage = "movingav"
+	fieldName Aura          = "aura"
+	fieldName Ephemeral     = "ephem"
+	fieldName Secret        = "secret"
+	fieldName SecretPoints  = "datapublic"
+	polarity  SecretPoints  = not
+	polarity  _             = id
+
 data Target
 	= MissingDate  {                   tValue :: Double, tRate :: Double }
 	| MissingValue { tDate :: Integer,                   tRate :: Double }
@@ -195,7 +245,6 @@ data Target
 
 -- TODO: Goals don't match the spec: they have an "id", "graphsum", and "rah"
 -- fields. I wonder what they're for!
--- TODO
 data Goal = Goal
 	{ gID               :: Text
 	, gSlug             :: Text
