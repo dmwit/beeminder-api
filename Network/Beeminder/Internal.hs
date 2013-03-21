@@ -126,6 +126,7 @@ instance FromJSON User where
 	parseJSON o = typeMismatch "user object" o
 
 data Burner = Front | Back deriving (Eq, Ord, Show, Read, Bounded, Enum)
+instance FromJSON Burner where parseJSON = showStringChoices "burner" (++"burner")
 
 -- TODO: list the attributes that you still get with 'skinny' (and test a call with skinny=True)
 data LevelOfGoalDetail
@@ -296,8 +297,45 @@ data Goal = Goal
 	, gBehavior         :: Set Behavior
 	} deriving (Eq, Ord, Show, Read)
 
+-- TODO: lens instances for Goal
+
 -- TODO, obviously
-instance FromJSON Goal where parseJSON _ = return undefined
+instance FromJSON Goal where
+	parseJSON o@(Object v) = Goal
+		<$> v .: "id"
+		<*> v .: "slug"
+		<*> v .: "updated_at"
+		<*> v .: "burner"
+		<*> v .: "title"
+		<*> v .: "goaldate"
+		<*> v .: "goalvalue"
+		<*> v .: "rate"
+		<*> v .: "runits"
+		<*> v .: "graph_url"
+		<*> v .: "thumb_url"
+		<*> v .: "losedate"
+		<*> v .: "panic"
+		<*> v .: "queued"
+		<*> v .: "datapoints"
+		<*> v .: "numpts"
+		<*> v .: "pledge"
+		<*> v .: "initday"
+		<*> v .: "initval"
+		<*> v .: "curday"
+		<*> v .: "curval"
+		<*> v .: "lastday"
+		<*> v .: "yaw"
+		<*> v .: "dir"
+		<*> v .: "lane"
+		<*> v .: "mathishard"
+		<*> v .: "headsum,limsum,graphsum" -- TODO
+		<*> v .: "won"
+		<*> v .: "frozen"
+		<*> v .: "lost"
+		<*> v .: "contract" -- TODO: gStepdownSchedule :: Maybe (Double, Integer)   -- ^ the current pledge (TODO: can this be inferred from gPledge?) and the date of a scheduled future stepdown, if any
+		<*> v .: "road"
+		<*> v .: "aggday"
+		<*> parseBehaviorSet v
 
 data Point = Point
 	{ pTimestamp :: Integer
