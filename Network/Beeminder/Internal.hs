@@ -29,6 +29,7 @@ import Network.HTTP.Types
 import qualified Blaze.ByteString.Builder.Char.Utf8 as Builder
 import qualified Data.ByteString as BS
 import qualified Data.Set        as Set
+import qualified Data.Vector     as Vector
 
 -- things that ought to be in somebody else's module/package {{{
 renderSimpleQueryText b xs = toByteString (renderQueryText b [(x, Just y) | (x, y) <- xs])
@@ -244,6 +245,17 @@ data Target
 	| MissingValue { tDate :: Integer,                   tRate :: Double }
 	| MissingRate  { tDate :: Integer, tValue :: Double                  }
 	deriving (Eq, Ord, Show, Read)
+
+instance FromJSON Target where
+	parseJSON v@(Array vs) = case Vector.toList vs of
+		[Null        , Number v, Number r] -> return $ MissingDate    (toDouble v) (toDouble r)
+		[Number (I t), Null    , Number r] -> return $ MissingValue t              (toDouble r)
+		[Number (I t), Number v, Null    ] -> return $ MissingRate  t (toDouble v)
+		_ -> typeMismatch "target: two out of three values of [goal date,value,rate]" v
+		where
+		toDouble (I n) = fromInteger n
+		toDouble (D n) = n
+	parseJSON v = typeMismatch "target (array)" v
 
 -- TODO: Goals don't match the spec: they have an "id", "graphsum", and "rah"
 -- fields. I wonder what they're for!
