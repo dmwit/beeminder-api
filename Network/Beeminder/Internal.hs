@@ -21,6 +21,8 @@ import Data.Set (Set)
 import Data.Text (Text)
 import Data.Text.Encoding
 import Data.Time.Clock.POSIX
+import Data.Universe
+import Data.Universe.Helpers
 import Network.HTTP.Conduit
 import Network.HTTP.Types
 
@@ -182,7 +184,7 @@ instance FromJSON Direction where
 	parseJSON (Number (I (-1))) = return Down
 	parseJSON v = typeMismatch "direction (either 1 or -1)" v
 
-showStringChoices s f = stringChoices s [(f . map toLower . show $ a, a) | a <- [minBound .. maxBound]]
+showStringChoices s f = stringChoices s [(f . map toLower . show $ a, a) | a <- universeF]
 stringChoices s cs_ v =
 	case v of
 		String t -> case lookup t cs of
@@ -218,7 +220,7 @@ data Behavior
 	deriving (Eq, Ord, Show, Read, Bounded, Enum)
 
 parseBehaviorSet v = do
-	behaviors <- mapM (parseBehavior v) [minBound .. maxBound]
+	behaviors <- mapM (parseBehavior v) universeF
 	return (Set.fromList [b | (b, h) <- behaviors, polarity b h])
 	where
 	parseBehavior v b = (,) b <$> (v .: fieldName b)
@@ -462,3 +464,15 @@ instance HasID       DeletePointParameters where _ID       = lens dppID       (\
 
 deletePoint :: Monad m => Token -> DeletePointParameters -> Request m
 deletePoint t p = (baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints", view _ID p]) { method = "DELETE" }
+-- Finite instances {{{
+instance Universe Burner    where universe = universeDef
+instance Universe Timeframe where universe = universeDef
+instance Universe Aggregate where universe = universeDef
+instance Universe Direction where universe = universeDef
+instance Universe Behavior  where universe = universeDef
+instance Finite Burner
+instance Finite Timeframe
+instance Finite Aggregate
+instance Finite Direction
+instance Finite Behavior
+-- }}}
