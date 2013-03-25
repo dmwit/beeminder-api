@@ -3,19 +3,24 @@ module Network.Beeminder
 	-- TODO: this export list is hopelessly incomplete
 	( UserGoals(..)
 	, User(..)
-	, Burner(..)
-	, LevelOfGoalDetail(..)
 	, Point(..)
 	, Goal(..)
 	, Token
+	-- UserGoals stuff
+	, Burner(..), LevelOfGoalDetail(..)
+	-- Goal stuff
+	, TimeFrame(..), Aggregate(..), Direction(..), Behavior(..), Target(..), GoalType(..)
 	, HasID(..), HasUpdatedAt(..), HasName(..), HasTimezone(..), HasUsername(..), HasGoals(..), HasGoalsFilter(..), HasLevelOfDetail(..)
 	, HasPointCount(..), HasTimestamp(..), HasValue(..), HasComment(..), HasRequestID(..), HasGoal(..), HasPointRequest(..), HasPointRequests(..)
+	, HasGetPoints(..)
 	, now
 	, user
+	, goal
 	, points
 	, createPoint , createPointNotify
 	, createPoints, createPointsNotify
-	, updatePoint, deletePoint
+	, updatePoint , deletePoint
+	, goalType
 	, runBeeminder
 	) where
 
@@ -27,7 +32,7 @@ import Control.Monad.Trans.Maybe
 import Data.Aeson
 import Data.Conduit
 import Data.Default
-import Network.Beeminder.Internal hiding (user, points, createPoint, createPointNotify, createPoints, createPointsNotify, updatePoint, deletePoint)
+import Network.Beeminder.Internal hiding (user, goal, points, createPoint, createPointNotify, createPoints, createPointsNotify, updatePoint, deletePoint)
 import Network.HTTP.Conduit
 import qualified Network.Beeminder.Internal as Internal
 
@@ -62,6 +67,7 @@ externalize f p = do
 	Beeminder . MaybeT . return . decode . responseBody $ r
 
 user   :: UserParameters   -> Beeminder User
+goal   :: GoalParameters   -> Beeminder Goal
 points :: PointsParameters -> Beeminder [Point]
 createPoint , createPointNotify  :: CreatePointParameters  -> Beeminder Point
 createPoints, createPointsNotify :: CreatePointsParameters -> Beeminder [Point]
@@ -69,6 +75,7 @@ updatePoint :: UpdatePointParameters -> Beeminder Point
 deletePoint :: DeletePointParameters -> Beeminder Point
 
 user               = externalize Internal.user
+goal               = externalize Internal.goal
 points             = externalize Internal.points
 createPoint        = externalize Internal.createPoint
 createPointNotify  = externalize Internal.createPointNotify

@@ -33,4 +33,6 @@ testDeletePoint
 	. set _ID   "511d86f5cc193109e300003c"
 	$ def
 
-test = testDeletePoint
+testGoal = run goal . set _Goal "apitest" . set _GetPoints True $ def
+
+test = testGoal

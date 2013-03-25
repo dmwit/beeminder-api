@@ -15,7 +15,7 @@ import Data.Conduit
 import Data.Default
 import Data.List
 import Data.Maybe
-import Data.Monoid
+import Data.Monoid hiding (Last, All)
 import Data.String
 import Data.Set (Set)
 import Data.Text (Text)
@@ -72,6 +72,7 @@ class HasRequestID     a where _RequestID     :: Simple Lens a (Maybe Text)
 class HasGoal          a where _Goal          :: Simple Lens a Text
 class HasPointRequest  a where _PointRequest  :: Simple Lens a PointRequest
 class HasPointRequests a where _PointRequests :: Simple Lens a [PointRequest]
+class HasGetPoints     a where _GetPoints     :: Simple Lens a Bool
 
 data UserGoals
 	= Slugs  [Text]        -- ^ just the short names (use 'JustTheSlugs')
@@ -175,11 +176,11 @@ user t p
 	++ [("goals_filter",     lowerShow b) | Just b <- [view _GoalsFilter p]]
 	++ [("datapoints_count", lowerShow n) | Just n <- [view _PointCount  p]]
 
-data Timeframe = Year | Month | Week | Day | Hour deriving (Eq, Ord, Show, Read, Bounded, Enum)
-data Aggregate = Last | First | Min | Max | Mean  deriving (Eq, Ord, Show, Read, Bounded, Enum)
-data Direction = Up | Down                        deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data TimeFrame = Year | Month | Week | Day | Hour      deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data Aggregate = Last | First | All | Min | Max | Mean deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data Direction = Up | Down                             deriving (Eq, Ord, Show, Read, Bounded, Enum)
 
-instance FromJSON Timeframe where parseJSON = showStringChoices "timeframe" (take 1)
+instance FromJSON TimeFrame where parseJSON = showStringChoices "timeframe" (take 1)
 instance FromJSON Aggregate where parseJSON = showStringChoices "aggregate" id
 instance FromJSON Direction where
 	parseJSON (Number (I   1 )) = return Up
@@ -269,7 +270,7 @@ data Goal = Goal
 	, gDate             :: Integer                   -- ^ of completion
 	, gValue            :: Double
 	, gRate             :: Double
-	, gRatePeriod       :: Timeframe
+	, gRatePeriod       :: TimeFrame
 	, gGraph            :: Text                      -- ^ URL of graph image TODO: can this be computed from gID?
 	, gThumb            :: Text                      -- ^ URL of graph thumb TODO: can this be computed from gID?
 	, gLoseDate         :: Integer                   -- ^ assuming no more data reported
@@ -299,7 +300,13 @@ data Goal = Goal
 
 -- TODO: lens instances for Goal
 
--- TODO, obviously
+parseStepdownSchedule o@(Object v) = do
+	a <- v .: "amount"
+	s <- v .: "stepdown_at"
+	return (Just (a,s))
+parseStepdownSchedule Null = return Nothing
+parseStepdownSchedule o    = typeMismatch "stepdown schedule" o
+
 instance FromJSON Goal where
 	parseJSON o@(Object v) = Goal
 		<$> v .: "id"
@@ -316,7 +323,7 @@ instance FromJSON Goal where
 		<*> v .: "losedate"
 		<*> v .: "panic"
 		<*> v .: "queued"
-		<*> v .: "datapoints"
+		<*> v .: "datapoints" -- (v .: "datapoints" <|> pure [])
 		<*> v .: "numpts"
 		<*> v .: "pledge"
 		<*> v .: "initday"
@@ -328,14 +335,58 @@ instance FromJSON Goal where
 		<*> v .: "dir"
 		<*> v .: "lane"
 		<*> v .: "mathishard"
-		<*> v .: "headsum,limsum,graphsum" -- TODO
+		<*> liftA3 (,,) (v .: "headsum") (v .: "limsum") (v .: "graphsum")
 		<*> v .: "won"
 		<*> v .: "frozen"
 		<*> v .: "lost"
-		<*> v .: "contract" -- TODO: gStepdownSchedule :: Maybe (Double, Integer)   -- ^ the current pledge (TODO: can this be inferred from gPledge?) and the date of a scheduled future stepdown, if any
+		<*> (v .: "contract" >>= parseStepdownSchedule)
 		<*> v .: "road"
 		<*> v .: "aggday"
 		<*> parseBehaviorSet v
+
+data GoalType = Hustler | Biker | FatLoser | Gainer | Inboxer | Drinker deriving (Eq, Ord, Show, Read, Bounded, Enum)
+
+--           hustler  biker  fatloser  gainer  inboxer  drinker
+-- yaw        1        1     -1         1      -1       -1
+-- dir        1        1     -1         1      -1        1
+-- exprd     false    false  false     false   false    false
+-- kyoom     true     false  false     false   false    true
+-- odom      false    true   false     false   false    false
+-- edgy      false    false  false     false   false    true
+-- noisy     false    false  true      true    false    false
+-- aggday    all      all    min       last    min      all
+-- steppy    true     true   false     false   true     true
+-- rosy      false    false  true      true    false    false
+-- movingav  false    false  true      true    false    false
+-- aura      false    false  true      true    false    false
+goalType :: Goal -> Maybe GoalType
+goalType g = case (gYaw g, gSlope g, gAggregate g, mungeBehavior g) of
+	(Up  , Up  , All , [Cumulative, StepLine]            ) -> Just Hustler
+	(Up  , Up  , All , [Odometer, StepLine]              ) -> Just Biker
+	(Down, Down, Min , [Noisy, Rosy, MovingAverage, Aura]) -> Just FatLoser
+	(Up  , Up  , Last, [Noisy, Rosy, MovingAverage, Aura]) -> Just Gainer
+	(Down, Down, Min , [StepLine]                        ) -> Just Inboxer
+	(Down, Up  , All , [Cumulative, Edgy, StepLine]      ) -> Just Drinker
+	_ -> Nothing
+	where
+	mungeBehavior = filter (`notElem` [Secret, SecretPoints]) . Set.toAscList . gBehavior
+
+-- | You will not like the '_Goal' you get from the 'Default' instance.
+data GoalParameters = GoalParameters
+	{ gpUsername  :: Maybe Text
+	, gpGoal      :: Text
+	, gpGetPoints :: Bool
+	} deriving (Eq, Ord, Show, Read)
+
+instance Default GoalParameters where def = GoalParameters def def False
+
+instance HasUsername  GoalParameters where _Username  = lens gpUsername  (\s b -> s { gpUsername  = b })
+instance HasGoal      GoalParameters where _Goal      = lens gpGoal      (\s b -> s { gpGoal      = b })
+instance HasGetPoints GoalParameters where _GetPoints = lens gpGetPoints (\s b -> s { gpGetPoints = b })
+
+goal :: Monad m => Token -> GoalParameters -> Request m
+goal t p = baseReq t ["users", maybeMe p, "goals", view _Goal p]
+         & [("datapoints", "true") | view _GetPoints p]
 
 data Point = Point
 	{ pTimestamp :: Integer
@@ -516,13 +567,15 @@ deletePoint :: Monad m => Token -> DeletePointParameters -> Request m
 deletePoint t p = (baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints", view _ID p]) { method = "DELETE" }
 -- Finite instances {{{
 instance Universe Burner    where universe = universeDef
-instance Universe Timeframe where universe = universeDef
+instance Universe TimeFrame where universe = universeDef
 instance Universe Aggregate where universe = universeDef
 instance Universe Direction where universe = universeDef
 instance Universe Behavior  where universe = universeDef
+instance Universe GoalType  where universe = universeDef
 instance Finite Burner
-instance Finite Timeframe
+instance Finite TimeFrame
 instance Finite Aggregate
 instance Finite Direction
 instance Finite Behavior
+instance Finite GoalType
 -- }}}
