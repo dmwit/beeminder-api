@@ -176,9 +176,10 @@ user t p
 	++ [("goals_filter",     lowerShow b) | Just b <- [view _GoalsFilter p]]
 	++ [("datapoints_count", lowerShow n) | Just n <- [view _PointCount  p]]
 
-data TimeFrame = Year | Month | Week | Day | Hour      deriving (Eq, Ord, Show, Read, Bounded, Enum)
-data Aggregate = Last | First | All | Min | Max | Mean deriving (Eq, Ord, Show, Read, Bounded, Enum)
-data Direction = Up | Down                             deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data TimeFrame = Year | Month | Week | Day | Hour deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data Direction = Up | Down                        deriving (Eq, Ord, Show, Read, Bounded, Enum)
+data Aggregate = Last | First | All | Min | Max | Mean | Sum
+	deriving (Eq, Ord, Show, Read, Bounded, Enum)
 
 instance FromJSON TimeFrame where parseJSON = showStringChoices "timeframe" (take 1)
 instance FromJSON Aggregate where parseJSON = showStringChoices "aggregate" id
@@ -315,7 +316,7 @@ instance FromJSON Goal where
 		<*> v .: "burner"
 		<*> v .: "title"
 		<*> v .: "goaldate"
-		<*> v .: "goalvalue"
+		<*> v .: "goalval"
 		<*> v .: "rate"
 		<*> v .: "runits"
 		<*> v .: "graph_url"
@@ -323,7 +324,7 @@ instance FromJSON Goal where
 		<*> v .: "losedate"
 		<*> v .: "panic"
 		<*> v .: "queued"
-		<*> v .: "datapoints" -- (v .: "datapoints" <|> pure [])
+		<*> (v .: "datapoints" <|> pure [])
 		<*> v .: "numpts"
 		<*> v .: "pledge"
 		<*> v .: "initday"
