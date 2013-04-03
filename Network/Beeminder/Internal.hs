@@ -391,6 +391,20 @@ goal :: Monad m => Token -> GoalParameters -> Request m
 goal t p = baseReq t ["users", maybeMe p, "goals", view _Goal p]
          & [("datapoints", "true") | view _GetPoints p]
 
+data AllGoalsParameters = AllGoalsParameters
+	{ agpUsername    :: Maybe Text
+	, agpGoalsFilter :: Maybe Burner
+	} deriving (Eq, Ord, Show, Read)
+
+instance Default AllGoalsParameters where def = AllGoalsParameters def def
+
+instance HasUsername    AllGoalsParameters where _Username    = lens agpUsername    (\s b -> s { agpUsername    = b })
+instance HasGoalsFilter AllGoalsParameters where _GoalsFilter = lens agpGoalsFilter (\s b -> s { agpGoalsFilter = b })
+
+allGoals :: Monad m => Token -> AllGoalsParameters -> Request m
+allGoals t p = baseReq t ["users", maybeMe p, "goals"]
+             & [("filter", lowerShow b) | Just b <- [view _GoalsFilter p]]
+
 data Point = Point
 	{ pTimestamp :: Integer
 	, pValue     :: Double

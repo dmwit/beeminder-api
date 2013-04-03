@@ -15,7 +15,7 @@ module Network.Beeminder
 	, HasGetPoints(..)
 	, now
 	, user
-	, goal
+	, goal, allGoals
 	, points
 	, createPoint , createPointNotify
 	, createPoints, createPointsNotify
@@ -32,7 +32,7 @@ import Control.Monad.Trans.Maybe
 import Data.Aeson
 import Data.Conduit
 import Data.Default
-import Network.Beeminder.Internal hiding (user, goal, points, createPoint, createPointNotify, createPoints, createPointsNotify, updatePoint, deletePoint)
+import Network.Beeminder.Internal hiding (user, goal, allGoals, points, createPoint, createPointNotify, createPoints, createPointsNotify, updatePoint, deletePoint)
 import Network.HTTP.Conduit
 import qualified Network.Beeminder.Internal as Internal
 
@@ -66,9 +66,10 @@ externalize f p = do
 	r <- httpLbs (f t p) {responseTimeout = Nothing} m
 	Beeminder . MaybeT . return . decode . responseBody $ r
 
-user   :: UserParameters   -> Beeminder User
-goal   :: GoalParameters   -> Beeminder Goal
-points :: PointsParameters -> Beeminder [Point]
+user        :: UserParameters        -> Beeminder User
+goal        :: GoalParameters        -> Beeminder Goal
+allGoals    :: AllGoalsParameters    -> Beeminder [Goal]
+points      :: PointsParameters      -> Beeminder [Point]
 createPoint , createPointNotify  :: CreatePointParameters  -> Beeminder Point
 createPoints, createPointsNotify :: CreatePointsParameters -> Beeminder [Point]
 updatePoint :: UpdatePointParameters -> Beeminder Point
@@ -76,6 +77,7 @@ deletePoint :: DeletePointParameters -> Beeminder Point
 
 user               = externalize Internal.user
 goal               = externalize Internal.goal
+allGoals           = externalize Internal.allGoals
 points             = externalize Internal.points
 createPoint        = externalize Internal.createPoint
 createPointNotify  = externalize Internal.createPointNotify

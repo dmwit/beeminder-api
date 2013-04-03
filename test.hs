@@ -34,5 +34,6 @@ testDeletePoint
 	$ def
 
 testGoal = run goal . set _Goal "apitest" . set _GetPoints True $ def
+testAllGoals = run allGoals def
 
-test = testGoal
+test = testAllGoals
