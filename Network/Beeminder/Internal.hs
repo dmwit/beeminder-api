@@ -372,7 +372,9 @@ goalType g = case (gYaw g, gSlope g, gAggregate g, mungeBehavior g) of
 	where
 	mungeBehavior = filter (`notElem` [Secret, SecretPoints]) . Set.toAscList . gBehavior
 
--- | You will not like the '_Goal' you get from the 'Default' instance.
+-- | You will not like the '_Goal' you get from the 'Default' instance. The
+-- 'Goal' you get will have @_Points = []@ unless you explicitly ask for the
+-- points by setting '_GetPoints'.
 data GoalParameters = GoalParameters
 	{ gpUsername  :: Maybe Text
 	, gpGoal      :: Text
