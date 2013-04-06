@@ -4,6 +4,7 @@ module Network.Beeminder.Internal where
 import Blaze.ByteString.Builder
 import Control.Applicative
 import Control.Lens hiding ((&), (.=))
+import Control.Monad
 import Control.Monad.IO.Class
 import Data.Aeson
 import Data.Aeson.Types
@@ -249,16 +250,19 @@ data Target
 	| MissingRate  { tDate :: Integer, tValue :: Double                  }
 	deriving (Eq, Ord, Show, Read)
 
+toDouble (I n) = fromInteger n
+toDouble (D n) = n
+
+toTarget o (Null        ) (Number v) (Number r) = return $ MissingDate    (toDouble v) (toDouble r)
+toTarget o (Number (I t)) (Null    ) (Number r) = return $ MissingValue t              (toDouble r)
+toTarget o (Number (I t)) (Number v) (Null    ) = return $ MissingRate  t (toDouble v)
+toTarget o _ _ _ = typeMismatch "target: two out of three values of [goal date,value,rate]" o
+
 instance FromJSON Target where
-	parseJSON v@(Array vs) = case Vector.toList vs of
-		[Null        , Number v, Number r] -> return $ MissingDate    (toDouble v) (toDouble r)
-		[Number (I t), Null    , Number r] -> return $ MissingValue t              (toDouble r)
-		[Number (I t), Number v, Null    ] -> return $ MissingRate  t (toDouble v)
-		_ -> typeMismatch "target: two out of three values of [goal date,value,rate]" v
-		where
-		toDouble (I n) = fromInteger n
-		toDouble (D n) = n
-	parseJSON v = typeMismatch "target (array)" v
+	parseJSON o@(Array vs) = case Vector.toList vs of
+		[t, v, r] -> toTarget o t v r
+		_ -> typeMismatch "target: two out of three values of [goal date,value,rate]" o
+	parseJSON o = typeMismatch "target (array)" o
 
 -- TODO: Goals don't match the spec: they have an "id", "graphsum", and "rah"
 -- fields. I wonder what they're for!
@@ -268,9 +272,7 @@ data Goal = Goal
 	, gUpdatedAt        :: Integer
 	, gBurner           :: Burner
 	, gTitle            :: Text
-	, gDate             :: Integer                   -- ^ of completion
-	, gValue            :: Double
-	, gRate             :: Double
+	, gTarget           :: Target
 	, gRatePeriod       :: TimeFrame
 	, gGraph            :: Text                      -- ^ URL of graph image TODO: can this be computed from gID?
 	, gThumb            :: Text                      -- ^ URL of graph thumb TODO: can this be computed from gID?
@@ -293,6 +295,7 @@ data Goal = Goal
 	, gWon              :: Bool                      -- TODO: can this be inferred from current date, gDate, and gLoseDate?
 	, gFrozen           :: Bool                      -- TODO: how does this differ from gLost...?
 	, gLost             :: Bool                      -- TODO: can this be inferred from current date, gDate, and gLoseDate? (what happens in the grace period?)
+	-- TODO: create a Contract type, since "contract" can be null, an object with an amount and null stepdown_at, or an object with an amount and a stepdown_at
 	, gStepdownSchedule :: Maybe (Double, Integer)   -- ^ the current pledge (TODO: can this be inferred from gPledge?) and the date of a scheduled future stepdown, if any
 	, gRoad             :: [Target]
 	, gAggregate        :: Aggregate                 -- ^ what to do with multiple points on a given day
@@ -315,9 +318,7 @@ instance FromJSON Goal where
 		<*> v .: "updated_at"
 		<*> v .: "burner"
 		<*> v .: "title"
-		<*> v .: "goaldate"
-		<*> v .: "goalval"
-		<*> v .: "rate"
+		<*> join (liftA3 (toTarget o) (v .: "goaldate") (v .: "goalval") (v .: "rate"))
 		<*> v .: "runits"
 		<*> v .: "graph_url"
 		<*> v .: "thumb_url"
