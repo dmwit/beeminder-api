@@ -303,12 +303,12 @@ data Goal = Goal
 	, gYaw              :: Direction                 -- ^ which side of the road is good?
 	, gSlope            :: Direction                 -- ^ which way is the road going? TODO: can this be inferred from gRate? (what happens when a downward-sloping graph gets dialed to an upward slope?)
 	, gLane             :: Integer
-	, gMathIsHard       :: (Integer, Double, Double) -- ^ date, value, and rate??? TODO: can this be inferred from gDate, gValue, gRate? if not, what's the difference??
+	, gMathIsHard       :: (Integer, Double, Double) -- ^ date, value, and rate??? TODO: can this be inferred from gTarget (or vice versa)? if not, what's the difference??
 	, gSummary          :: (Text, Text, Text)        -- headsum, limsum, graphsum
 	, gWon              :: Bool                      -- TODO: can this be inferred from current date, gDate, and gLoseDate?
-	, gFrozen           :: Bool                      -- TODO: how does this differ from gLost...?
+	, gFrozen           :: Bool                      -- TODO: is this gWon || gLost?
 	, gLost             :: Bool                      -- TODO: can this be inferred from current date, gDate, and gLoseDate? (what happens in the grace period?)
-	, gContract         :: Contract                  -- ^ the current pledge (TODO: can this be inferred from gPledge?) and the date of a scheduled future stepdown, if any
+	, gContract         :: Contract                  -- ^ the current pledge (TODO: can this be inferred from gPledge or vice versa?) and the date of a scheduled future stepdown, if any
 	, gRoad             :: [Target]
 	, gAggregate        :: Aggregate                 -- ^ what to do with multiple points on a given day
 	, gBehavior         :: Set Behavior
