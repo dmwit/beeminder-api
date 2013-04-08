@@ -22,6 +22,8 @@ module Network.Beeminder
 	, updatePoint , deletePoint
 	, goalType
 	, runBeeminder
+	-- TODO: don't export this
+	, externalize
 	) where
 
 import Control.Applicative

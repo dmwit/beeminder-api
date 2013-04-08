@@ -1,15 +1,23 @@
 import Control.Applicative
 import Control.Lens
+import Data.Aeson.Types
 import Data.Default
 import Data.String
 import Network.Beeminder
 import System.Random
 
 import qualified Data.ByteString as BS
+import qualified Network.Beeminder.Internal as I
 
 run f p = do
 	bs <- BS.readFile "token"
 	runBeeminder (BS.init bs) (f p)
+
+debug f p = do
+	v_ <- run (externalize f) p
+	case v_ of
+		Nothing -> fail "didn't parse as JSON even"
+		Just v  -> return (v, parse parseJSON v)
 
 testUser         = run user        $ def
 testPoints       = run points      $ set _Goal "read-papers" def
