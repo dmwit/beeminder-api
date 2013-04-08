@@ -264,6 +264,19 @@ instance FromJSON Target where
 		_ -> typeMismatch "target: two out of three values of [goal date,value,rate]" o
 	parseJSON o = typeMismatch "target (array)" o
 
+data Contract
+	= Free
+	| Pledge Double
+	| Stepdown Double Integer
+	deriving (Eq, Ord, Show, Read)
+
+instance FromJSON Contract where
+	parseJSON o@(Object v) = stepdown <|> pledge where
+		stepdown = Stepdown <$> v .: "amount" <*> v .: "stepdown_at"
+		pledge   = Pledge   <$> v .: "amount"
+	parseJSON Null = pure Free
+	parseJSON o = typeMismatch "contract (object)" o
+
 -- TODO: Goals don't match the spec: they have an "id", "graphsum", and "rah"
 -- fields. I wonder what they're for!
 data Goal = Goal
@@ -295,21 +308,13 @@ data Goal = Goal
 	, gWon              :: Bool                      -- TODO: can this be inferred from current date, gDate, and gLoseDate?
 	, gFrozen           :: Bool                      -- TODO: how does this differ from gLost...?
 	, gLost             :: Bool                      -- TODO: can this be inferred from current date, gDate, and gLoseDate? (what happens in the grace period?)
-	-- TODO: create a Contract type, since "contract" can be null, an object with an amount and null stepdown_at, or an object with an amount and a stepdown_at
-	, gStepdownSchedule :: Maybe (Double, Integer)   -- ^ the current pledge (TODO: can this be inferred from gPledge?) and the date of a scheduled future stepdown, if any
+	, gContract         :: Contract                  -- ^ the current pledge (TODO: can this be inferred from gPledge?) and the date of a scheduled future stepdown, if any
 	, gRoad             :: [Target]
 	, gAggregate        :: Aggregate                 -- ^ what to do with multiple points on a given day
 	, gBehavior         :: Set Behavior
 	} deriving (Eq, Ord, Show, Read)
 
 -- TODO: lens instances for Goal
-
-parseStepdownSchedule o@(Object v) = do
-	a <- v .: "amount"
-	s <- v .: "stepdown_at"
-	return (Just (a,s))
-parseStepdownSchedule Null = return Nothing
-parseStepdownSchedule o    = typeMismatch "stepdown schedule" o
 
 instance FromJSON Goal where
 	parseJSON o@(Object v) = Goal
@@ -341,10 +346,11 @@ instance FromJSON Goal where
 		<*> v .: "won"
 		<*> v .: "frozen"
 		<*> v .: "lost"
-		<*> (v .: "contract" >>= parseStepdownSchedule)
+		<*> v .: "contract"
 		<*> v .: "road"
 		<*> v .: "aggday"
 		<*> parseBehaviorSet v
+	parseJSON o = typeMismatch "goal (object)" o
 
 data GoalType = Hustler | Biker | FatLoser | Gainer | Inboxer | Drinker deriving (Eq, Ord, Show, Read, Bounded, Enum)
 
