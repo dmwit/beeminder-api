@@ -410,7 +410,7 @@ instance HasGoalsFilter AllGoalsParameters where _GoalsFilter = lens agpGoalsFil
 
 allGoals :: Monad m => Token -> AllGoalsParameters -> Request m
 allGoals t p = baseReq t ["users", maybeMe p, "goals"]
-             & [("filter", lowerShow b) | Just b <- [view _GoalsFilter p]]
+             & [("filter", lowerShow b <> "burner") | Just b <- [view _GoalsFilter p]]
 
 data Point = Point
 	{ pTimestamp :: Integer
