@@ -43,5 +43,13 @@ testDeletePoint
 
 testGoal = run goal . set _Goal "apitest" . set _GetPoints True $ def
 testAllGoals = run allGoals def
+testCreateGoal
+	= run createGoal
+	. set _Goal  "apitest2"
+	. set _Title "THIS IS JUST A TEST. DO NOT PANIC"
+	. set _Type  Hustler
+	. set _Value 30
+	. set _Panic 5000
+	$ def
 
-test = testAllGoals
+test = testCreateGoal

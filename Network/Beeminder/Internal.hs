@@ -74,6 +74,11 @@ class HasGoal          a where _Goal          :: Simple Lens a Text
 class HasPointRequest  a where _PointRequest  :: Simple Lens a PointRequest
 class HasPointRequests a where _PointRequests :: Simple Lens a [PointRequest]
 class HasGetPoints     a where _GetPoints     :: Simple Lens a Bool
+class HasTitle         a where _Title         :: Simple Lens a Text
+class HasType          a where _Type          :: Simple Lens a GoalType
+class HasTarget        a where _Target        :: Simple Lens a Target
+class HasBehavior      a where _Behavior      :: Simple Lens a (Set Behavior)
+class HasPanic         a where _Panic         :: Simple Lens a Double
 
 data UserGoals
 	= Slugs  [Text]        -- ^ just the short names (use 'JustTheSlugs')
@@ -281,7 +286,7 @@ instance FromJSON Contract where
 -- fields. I wonder what they're for!
 data Goal = Goal
 	{ gID               :: Text
-	, gSlug             :: Text
+	, gGoal             :: Text
 	, gUpdatedAt        :: Integer
 	, gBurner           :: Burner
 	, gTitle            :: Text
@@ -353,6 +358,7 @@ instance FromJSON Goal where
 	parseJSON o = typeMismatch "goal (object)" o
 
 data GoalType = Hustler | Biker | FatLoser | Gainer | Inboxer | Drinker deriving (Eq, Ord, Show, Read, Bounded, Enum)
+instance Default GoalType where def = minBound
 
 --           hustler  biker  fatloser  gainer  inboxer  drinker
 -- yaw        1        1     -1         1      -1       -1
@@ -367,8 +373,8 @@ data GoalType = Hustler | Biker | FatLoser | Gainer | Inboxer | Drinker deriving
 -- rosy      false    false  true      true    false    false
 -- movingav  false    false  true      true    false    false
 -- aura      false    false  true      true    false    false
-goalType :: Goal -> Maybe GoalType
-goalType g = case (gYaw g, gSlope g, gAggregate g, mungeBehavior g) of
+gType :: Goal -> Maybe GoalType
+gType g = case (gYaw g, gSlope g, gAggregate g, mungeBehavior g) of
 	(Up  , Up  , All , [Cumulative, StepLine]            ) -> Just Hustler
 	(Up  , Up  , All , [Odometer, StepLine]              ) -> Just Biker
 	(Down, Down, Min , [Noisy, Rosy, MovingAverage, Aura]) -> Just FatLoser
@@ -411,6 +417,56 @@ instance HasGoalsFilter AllGoalsParameters where _GoalsFilter = lens agpGoalsFil
 allGoals :: Monad m => Token -> AllGoalsParameters -> Request m
 allGoals t p = baseReq t ["users", maybeMe p, "goals"]
              & [("filter", lowerShow b <> "burner") | Just b <- [view _GoalsFilter p]]
+
+-- | You will not like the '_Goal' you get from the 'Default' instance, and
+-- you almost certainly will also not like the '_Title', '_Type', or '_Target'
+-- you get. The only behaviors that will be respected in the '_Behavior' are
+-- 'Ephemeral', 'Secret', and 'SecretPoints'; all the remaining behaviors will
+-- be set according to the '_Type'.
+data CreateGoalParameters = CreateGoalParameters
+	{ cgpUsername :: Maybe Text
+	, cgpGoal     :: Text
+	, cgpTitle    :: Text
+	, cgpType     :: GoalType
+	, cgpTarget   :: Target
+	, cgpValue    :: Double
+	, cgpBehavior :: Set Behavior
+	, cgpPanic    :: Double
+	} deriving (Eq, Ord, Show, Read)
+
+-- given in the spec; this is 15 hours
+defaultPanic = 54000
+
+instance Default CreateGoalParameters where def = CreateGoalParameters def def def def (MissingDate 1 1) def (Set.singleton SecretPoints) defaultPanic
+
+instance HasUsername CreateGoalParameters where _Username = lens cgpUsername (\s b -> s { cgpUsername = b })
+instance HasGoal     CreateGoalParameters where _Goal     = lens cgpGoal     (\s b -> s { cgpGoal     = b })
+instance HasTitle    CreateGoalParameters where _Title    = lens cgpTitle    (\s b -> s { cgpTitle    = b })
+instance HasType     CreateGoalParameters where _Type     = lens cgpType     (\s b -> s { cgpType     = b })
+instance HasTarget   CreateGoalParameters where _Target   = lens cgpTarget   (\s b -> s { cgpTarget   = b })
+instance HasValue    CreateGoalParameters where _Value    = lens cgpValue    (\s b -> s { cgpValue    = b })
+instance HasBehavior CreateGoalParameters where _Behavior = lens cgpBehavior (\s b -> s { cgpBehavior = b })
+instance HasPanic    CreateGoalParameters where _Panic    = lens cgpPanic    (\s b -> s { cgpPanic    = b })
+
+createGoal :: Monad m => Token -> CreateGoalParameters -> Request m
+createGoal t p = urlEncodedBodyText (
+		[ ("slug"      ,                                          view _Goal     $ p)
+		, ("title"     ,                                          view _Title    $ p)
+		, ("goal_type" , lowerShow .                              view _Type     $ p)
+		, ("initval"   , lowerShow .                              view _Value    $ p)
+		, ("ephem"     , lowerShow . Set.member Ephemeral       . view _Behavior $ p)
+		, ("panic"     , lowerShow .                              view _Panic    $ p)
+		, ("secret"    , lowerShow . Set.member Secret          . view _Behavior $ p)
+		, ("datapublic", lowerShow . Set.notMember SecretPoints . view _Behavior $ p)
+		, ("dryrun"    , "false") -- TODO: delete
+		]
+		++ renderTarget (view _Target p)
+	)
+	(baseReq t ["users", maybeMe p, "goals"])
+	where
+	renderTarget (MissingDate    v r) = [                           ("goalval", lowerShow v), ("rate", lowerShow r)]
+	renderTarget (MissingValue t   r) = [("goaldate", lowerShow t),                           ("rate", lowerShow r)]
+	renderTarget (MissingRate  t v  ) = [("goaldate", lowerShow t), ("goalval", lowerShow v)                       ]
 
 data Point = Point
 	{ pTimestamp :: Integer

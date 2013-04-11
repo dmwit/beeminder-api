@@ -12,15 +12,16 @@ module Network.Beeminder
 	, TimeFrame(..), Aggregate(..), Direction(..), Behavior(..), Target(..), GoalType(..)
 	, HasID(..), HasUpdatedAt(..), HasName(..), HasTimezone(..), HasUsername(..), HasGoals(..), HasGoalsFilter(..), HasLevelOfDetail(..)
 	, HasPointCount(..), HasTimestamp(..), HasValue(..), HasComment(..), HasRequestID(..), HasGoal(..), HasPointRequest(..), HasPointRequests(..)
-	, HasGetPoints(..)
+	, HasGetPoints(..), HasTitle(..), HasType(..), HasTarget(..), HasBehavior(..), HasPanic(..)
 	, now
 	, user
 	, goal, allGoals
+	, createGoal
 	, points
 	, createPoint , createPointNotify
 	, createPoints, createPointsNotify
 	, updatePoint , deletePoint
-	, goalType
+	, gType
 	, runBeeminder
 	-- TODO: don't export this
 	, externalize
@@ -34,7 +35,7 @@ import Control.Monad.Trans.Maybe
 import Data.Aeson
 import Data.Conduit
 import Data.Default
-import Network.Beeminder.Internal hiding (user, goal, allGoals, points, createPoint, createPointNotify, createPoints, createPointsNotify, updatePoint, deletePoint)
+import Network.Beeminder.Internal hiding (user, goal, allGoals, createGoal, points, createPoint, createPointNotify, createPoints, createPointsNotify, updatePoint, deletePoint)
 import Network.HTTP.Conduit
 import qualified Network.Beeminder.Internal as Internal
 
@@ -71,6 +72,7 @@ externalize f p = do
 user        :: UserParameters        -> Beeminder User
 goal        :: GoalParameters        -> Beeminder Goal
 allGoals    :: AllGoalsParameters    -> Beeminder [Goal]
+createGoal  :: CreateGoalParameters  -> Beeminder Goal
 points      :: PointsParameters      -> Beeminder [Point]
 createPoint , createPointNotify  :: CreatePointParameters  -> Beeminder Point
 createPoints, createPointsNotify :: CreatePointsParameters -> Beeminder [Point]
@@ -80,6 +82,7 @@ deletePoint :: DeletePointParameters -> Beeminder Point
 user               = externalize Internal.user
 goal               = externalize Internal.goal
 allGoals           = externalize Internal.allGoals
+createGoal         = externalize Internal.createGoal
 points             = externalize Internal.points
 createPoint        = externalize Internal.createPoint
 createPointNotify  = externalize Internal.createPointNotify
