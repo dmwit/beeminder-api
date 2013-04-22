@@ -271,8 +271,8 @@ instance FromJSON Target where
 
 data Contract
 	= Free
-	| Pledge Double
-	| Stepdown Double Integer
+	| Pledge   { cPledge :: Integer }
+	| Stepdown { cPledge :: Integer, cAt :: Integer }
 	deriving (Eq, Ord, Show, Read)
 
 instance FromJSON Contract where
@@ -299,7 +299,7 @@ data Goal = Goal
 	, gQueued           :: Bool                      -- ^ is graph still rendering?
 	, gPoints           :: [Point]                   -- ^ empty unless you explicitly ask for it not to be
 	, gPointCount       :: Integer
-	, gPledge           :: Double                    -- TODO: Integer? (and change gStepdownSchedule to match)
+	, gPledge           :: Integer
 	, gStartDate        :: Integer
 	, gStartValue       :: Double
 	, gCurrentDate      :: Integer
