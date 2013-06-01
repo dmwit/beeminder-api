@@ -13,7 +13,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (toStrict)
 import Data.Char
 import Data.Conduit
-import Data.Default
+import Data.Default.Class
 import Data.List
 import Data.Maybe
 import Data.Monoid hiding (Last, All)

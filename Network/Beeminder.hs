@@ -34,7 +34,7 @@ import Control.Monad.Trans.Control
 import Control.Monad.Trans.Maybe
 import Data.Aeson
 import Data.Conduit
-import Data.Default
+import Data.Default.Class
 import Network.Beeminder.Internal hiding (user, goal, allGoals, createGoal, points, createPoint, createPointNotify, createPoints, createPointsNotify, updatePoint, deletePoint)
 import Network.HTTP.Conduit
 import qualified Network.Beeminder.Internal as Internal
