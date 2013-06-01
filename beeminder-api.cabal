@@ -15,7 +15,8 @@ build-type:          Simple
 cabal-version:       >=1.8
 
 library
-  exposed-modules:     Network.Beeminder
+  exposed-modules:   Network.Beeminder
+  other-modules:     Network.Beeminder.Internal
   build-depends:
     base ==4.6.*,
     mtl >= 2.1 && < 2.2,
