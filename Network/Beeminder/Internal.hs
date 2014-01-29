@@ -172,7 +172,7 @@ textShow, lowerShow :: Show a => a -> Text
 textShow  = fromString . show
 lowerShow = fromString . map toLower . show
 
-user :: Monad m => Token -> UserParameters -> Request m
+user :: Token -> UserParameters -> Request
 user t p
 	= baseReq t ["users", maybeMe p]
 	& case view _LevelOfDetail p of
@@ -400,7 +400,7 @@ instance HasUsername  GoalParameters where _Username  = lens gpUsername  (\s b -
 instance HasGoal      GoalParameters where _Goal      = lens gpGoal      (\s b -> s { gpGoal      = b })
 instance HasGetPoints GoalParameters where _GetPoints = lens gpGetPoints (\s b -> s { gpGetPoints = b })
 
-goal :: Monad m => Token -> GoalParameters -> Request m
+goal :: Token -> GoalParameters -> Request
 goal t p = baseReq t ["users", maybeMe p, "goals", view _Goal p]
          & [("datapoints", "true") | view _GetPoints p]
 
@@ -414,7 +414,7 @@ instance Default AllGoalsParameters where def = AllGoalsParameters def def
 instance HasUsername    AllGoalsParameters where _Username    = lens agpUsername    (\s b -> s { agpUsername    = b })
 instance HasGoalsFilter AllGoalsParameters where _GoalsFilter = lens agpGoalsFilter (\s b -> s { agpGoalsFilter = b })
 
-allGoals :: Monad m => Token -> AllGoalsParameters -> Request m
+allGoals :: Token -> AllGoalsParameters -> Request
 allGoals t p = baseReq t ["users", maybeMe p, "goals"]
              & [("filter", lowerShow b <> "burner") | Just b <- [view _GoalsFilter p]]
 
@@ -448,7 +448,7 @@ instance HasValue    CreateGoalParameters where _Value    = lens cgpValue    (\s
 instance HasBehavior CreateGoalParameters where _Behavior = lens cgpBehavior (\s b -> s { cgpBehavior = b })
 instance HasPanic    CreateGoalParameters where _Panic    = lens cgpPanic    (\s b -> s { cgpPanic    = b })
 
-createGoal :: Monad m => Token -> CreateGoalParameters -> Request m
+createGoal :: Token -> CreateGoalParameters -> Request
 createGoal t p = urlEncodedBodyText (
 		[ ("slug"      ,                                          view _Goal     $ p)
 		, ("title"     ,                                          view _Title    $ p)
@@ -505,7 +505,7 @@ instance Default PointsParameters where def = PointsParameters def def
 instance HasUsername PointsParameters where _Username = lens ppUsername (\s b -> s { ppUsername = b })
 instance HasGoal     PointsParameters where _Goal     = lens ppGoal     (\s b -> s { ppGoal     = b })
 
-points :: Monad m => Token -> PointsParameters -> Request m
+points :: Token -> PointsParameters -> Request
 points t p = baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints"]
 
 -- | You will not like the '_Timestamp' or '_Value' you get from the
@@ -573,8 +573,8 @@ instance HasUsername      CreatePointsParameters where _Username      = lens cps
 instance HasGoal          CreatePointsParameters where _Goal          = lens cpspGoal          (\s b -> s { cpspGoal          = b })
 instance HasPointRequests CreatePointsParameters where _PointRequests = lens cpspPointRequests (\s b -> s { cpspPointRequests = b })
 
-createPoint , createPointNotify  :: Monad m => Token -> CreatePointParameters  -> Request m
-createPoints, createPointsNotify :: Monad m => Token -> CreatePointsParameters -> Request m
+createPoint , createPointNotify  :: Token -> CreatePointParameters  -> Request
+createPoints, createPointsNotify :: Token -> CreatePointsParameters -> Request
 
 createPointNotify = createPointInternal True
 createPoint       = createPointInternal False
@@ -622,7 +622,7 @@ instance HasTimestamp UpdatePointParameters where _Timestamp = lens uppTimestamp
 instance HasValue     UpdatePointParameters where _Value     = lens uppValue     (\s b -> s { uppValue     = b })
 instance HasComment   UpdatePointParameters where _Comment   = lens uppComment   (\s b -> s { uppComment   = b })
 
-updatePoint :: Monad m => Token -> UpdatePointParameters -> Request m
+updatePoint :: Token -> UpdatePointParameters -> Request
 updatePoint t p = (urlEncodedBodyText
 	(tsvcArgs p)
 	(baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints", view _ID p])
@@ -643,7 +643,7 @@ instance HasUsername DeletePointParameters where _Username = lens dppUsername (\
 instance HasGoal     DeletePointParameters where _Goal     = lens dppGoal     (\s b -> s { dppGoal     = b })
 instance HasID       DeletePointParameters where _ID       = lens dppID       (\s b -> s { dppID       = b })
 
-deletePoint :: Monad m => Token -> DeletePointParameters -> Request m
+deletePoint :: Token -> DeletePointParameters -> Request
 deletePoint t p = (baseReq t ["users", maybeMe p, "goals", view _Goal p, "datapoints", view _ID p]) { method = "DELETE" }
 -- Finite instances {{{
 instance Universe Burner    where universe = universeDef
