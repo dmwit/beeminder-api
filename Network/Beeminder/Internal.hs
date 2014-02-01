@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 module Network.Beeminder.Internal where
 
 import Blaze.ByteString.Builder
@@ -18,6 +18,8 @@ import Data.Default.Class
 import Data.List
 import Data.Maybe
 import Data.Monoid hiding (Last, All)
+import Data.Ratio
+import Data.Scientific (Scientific)
 import Data.String
 import Data.Set (Set)
 import Data.Text (Text)
@@ -191,8 +193,8 @@ data Aggregate = Last | First | All | Min | Max | Mean | Sum
 instance FromJSON TimeFrame where parseJSON = showStringChoices "timeframe" (take 1)
 instance FromJSON Aggregate where parseJSON = showStringChoices "aggregate" id
 instance FromJSON Direction where
-	parseJSON (Number (I   1 )) = return Up
-	parseJSON (Number (I (-1))) = return Down
+	parseJSON (Number (toRational ->  1)) = return Up
+	parseJSON (Number (toRational -> -1)) = return Down
 	parseJSON v = typeMismatch "direction (either 1 or -1)" v
 
 showStringChoices s f = stringChoices s [(f . map toLower . show $ a, a) | a <- universeF]
@@ -256,12 +258,19 @@ data Target
 	| MissingRate  { tDate :: Integer, tValue :: Double                  }
 	deriving (Eq, Ord, Show, Read)
 
-toDouble (I n) = fromInteger n
-toDouble (D n) = n
+toDouble :: Scientific -> Double
+toDouble = fromRational . toRational
 
-toTarget o (Null        ) (Number v) (Number r) = return $ MissingDate    (toDouble v) (toDouble r)
-toTarget o (Number (I t)) (Null    ) (Number r) = return $ MissingValue t              (toDouble r)
-toTarget o (Number (I t)) (Number v) (Null    ) = return $ MissingRate  t (toDouble v)
+toIntegerMaybe :: Scientific -> Maybe Integer
+toIntegerMaybe s
+  | denominator r == 1 = Just $ numerator r
+  | otherwise          = Nothing
+  where
+    r = toRational s
+
+toTarget o (Null                             ) (Number v) (Number r) = return $ MissingDate    (toDouble v) (toDouble r)
+toTarget o (Number (toIntegerMaybe -> Just t)) (Null    ) (Number r) = return $ MissingValue t              (toDouble r)
+toTarget o (Number (toIntegerMaybe -> Just t)) (Number v) (Null    ) = return $ MissingRate  t (toDouble v)
 toTarget o _ _ _ = typeMismatch "target: two out of three values of [goal date,value,rate]" o
 
 instance FromJSON Target where
