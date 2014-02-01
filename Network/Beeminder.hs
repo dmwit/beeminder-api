@@ -61,10 +61,10 @@ instance MonadBaseControl IO Beeminder where
 
 runBeeminder :: Token -> Beeminder a -> IO (Maybe a)
 runBeeminder t m = do
-        man <- newManager def
+        man <- newManager conduitManagerSettings
         runResourceT (runReaderT (runMaybeT (unBeeminder m)) BeeminderEnvironment { token = t, manager = man })
 
-externalize :: FromJSON a => (Token -> params -> Request Beeminder) -> params -> Beeminder a
+externalize :: FromJSON a => (Token -> params -> Request) -> params -> Beeminder a
 externalize f p = do
         BeeminderEnvironment { token = t, manager = m } <- ask
         r <- httpLbs (f t p) {responseTimeout = Nothing} m
