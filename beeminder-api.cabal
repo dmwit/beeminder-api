@@ -31,12 +31,10 @@ library
     bytestring >= 0.10 && < 0.11,
     blaze-builder >= 0.3 && < 0.4,
     http-types >= 0.8 && < 0.9,
-    universe >= 0.4 && < 0.5,
+    universe >= 0.5 && < 0.6,
     time >= 1.4 && < 1.5,
     text >= 0.11 && < 1.2,
     transformers >= 0.3 && < 0.4,
     transformers-base >= 0.4 && < 0.5,
-    lens >= 3.9 && < 3.11,
+    lens >= 3.9 && < 4.1,
     monad-control >= 0.3 && < 0.4
-
-
