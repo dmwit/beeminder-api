@@ -6,7 +6,8 @@ import Control.Applicative
 import Control.Lens hiding ((&), (.=))
 import Control.Monad
 import Control.Monad.IO.Class
-import Data.Aeson
+import Data.Aeson hiding (encode)
+import Data.Aeson.Encode.Shim (encode)
 import Data.Aeson.Types
 import Data.Attoparsec.Number
 import Data.ByteString (ByteString)
