@@ -2,32 +2,38 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE TypeFamilies               #-}
 module Network.Beeminder
-        -- TODO: this export list is hopelessly incomplete
-        ( Beeminder
-        , UserGoals(..)
-        , User(..)
-        , Point(..)
-        , Goal(..)
-        , Token
-        -- UserGoals stuff
-        , Burner(..), LevelOfGoalDetail(..)
-        -- Goal stuff
-        , TimeFrame(..), Aggregate(..), Direction(..), Behavior(..), Target(..), GoalType(..)
-        , HasID(..), HasUpdatedAt(..), HasName(..), HasTimezone(..), HasUsername(..), HasGoals(..), HasGoalsFilter(..), HasLevelOfDetail(..)
-        , HasPointCount(..), HasTimestamp(..), HasValue(..), HasComment(..), HasRequestID(..), HasGoal(..), HasPointRequest(..), HasPointRequests(..)
-        , HasGetPoints(..), HasTitle(..), HasType(..), HasTarget(..), HasBehavior(..), HasPanic(..)
-        , now
-        , user
+        ( -- * API calls
+          user
         , goal, allGoals
         , createGoal
         , points
         , createPoint , createPointNotify
         , createPoints, createPointsNotify
         , updatePoint , deletePoint
-        , gType
+
+          -- * The Beeminder monad
+        , Beeminder
+        , Token
         , runBeeminder
-        -- TODO: don't export this
-        , externalize
+
+          -- * Foo bar
+        , UserGoals(..)
+        , User(..)
+        , Point(..)
+        , Goal(..)
+        -- UserGoals stuff
+        , Burner(..), LevelOfGoalDetail(..)
+        -- Goal stuff
+        , TimeFrame(..), Aggregate(..), Direction(..), Behavior(..), Target(..), GoalType(..)
+
+          -- * Lenses
+        , HasID(..), HasUpdatedAt(..), HasName(..), HasTimezone(..), HasUsername(..), HasGoals(..), HasGoalsFilter(..), HasLevelOfDetail(..)
+        , HasPointCount(..), HasTimestamp(..), HasValue(..), HasComment(..), HasRequestID(..), HasGoal(..), HasPointRequest(..), HasPointRequests(..)
+        , HasGetPoints(..), HasTitle(..), HasType(..), HasTarget(..), HasBehavior(..), HasPanic(..)
+
+          -- * Utilities
+        , now
+        , gType
         ) where
 
 import           Control.Applicative
@@ -65,11 +71,15 @@ instance MonadBaseControl IO Beeminder where
         liftBaseWith f = Beeminder (liftBaseWith (\g -> f (\(Beeminder m) -> StM <$> g m)))
         restoreM (StM v) = Beeminder (restoreM v)
 
+-- | Run a beeminder computation with the given authentication token,
+--   possibly returning a result.
 runBeeminder :: Token -> Beeminder a -> IO (Maybe a)
 runBeeminder t m = do
         man <- newManager conduitManagerSettings
         runResourceT (runReaderT (runMaybeT (unBeeminder m)) BeeminderEnvironment { token = t, manager = man })
 
+-- | Turn a raw operation taking a token and returning a 'Request'
+--   into a nicely encapsulated action in the 'Beeminder' monad.
 externalize :: FromJSON a => (Token -> params -> Request) -> params -> Beeminder a
 externalize f p = do
         BeeminderEnvironment { token = t, manager = m } <- ask
