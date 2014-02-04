@@ -1,4 +1,6 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, MultiParamTypeClasses, TypeFamilies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE TypeFamilies               #-}
 module Network.Beeminder
         -- TODO: this export list is hopelessly incomplete
         ( Beeminder
@@ -28,17 +30,21 @@ module Network.Beeminder
         , externalize
         ) where
 
-import Control.Applicative
-import Control.Monad.Base
-import Control.Monad.Reader
-import Control.Monad.Trans.Control
-import Control.Monad.Trans.Maybe
-import Data.Aeson
-import Data.Conduit
-import Data.Default.Class
-import Network.Beeminder.Internal hiding (user, goal, allGoals, createGoal, points, createPoint, createPointNotify, createPoints, createPointsNotify, updatePoint, deletePoint)
-import Network.HTTP.Conduit
-import qualified Network.Beeminder.Internal as Internal
+import           Control.Applicative
+import           Control.Monad.Base
+import           Control.Monad.Reader
+import           Control.Monad.Trans.Control
+import           Control.Monad.Trans.Maybe
+import           Data.Aeson
+import           Data.Conduit
+import           Data.Default.Class
+import           Network.Beeminder.Internal  hiding (allGoals, createGoal,
+                                              createPoint, createPointNotify,
+                                              createPoints, createPointsNotify,
+                                              deletePoint, goal, points,
+                                              updatePoint, user)
+import qualified Network.Beeminder.Internal  as Internal
+import           Network.HTTP.Conduit
 
 data BeeminderEnvironment = BeeminderEnvironment
         { token   :: Token
