@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings  #-}
+
 import Control.Applicative
 import Control.Lens
 import Data.Aeson.Types
@@ -52,4 +54,4 @@ testCreateGoal
 	. set _Panic 5000
 	$ def
 
-test = testCreateGoal
+main = testCreateGoal

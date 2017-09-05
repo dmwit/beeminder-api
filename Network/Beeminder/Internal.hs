@@ -44,7 +44,7 @@ instance Default Text where def = ""
 
 type Token = ByteString
 
-baseReq token segments = def
+baseReq token segments = defaultRequest
         { secure      = True
         , host        = "www.beeminder.com"
         , port        = 443
@@ -469,7 +469,6 @@ createGoal t p = urlEncodedBodyText (
                 , ("panic"     , lowerShow .                              view _Panic    $ p)
                 , ("secret"    , lowerShow . Set.member Secret          . view _Behavior $ p)
                 , ("datapublic", lowerShow . Set.notMember SecretPoints . view _Behavior $ p)
-                , ("dryrun"    , "false") -- TODO: delete
                 ]
                 ++ renderTarget (view _Target p)
         )

@@ -34,6 +34,7 @@ module Network.Beeminder
           -- * Utilities
         , now
         , gType
+        , externalize
         ) where
 
 import           Control.Applicative
@@ -41,6 +42,7 @@ import           Control.Monad.Base
 import           Control.Monad.Reader
 import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.Maybe
+import           Control.Monad.Trans.Resource
 import           Data.Aeson
 import           Data.Conduit
 import           Data.Default.Class
@@ -59,17 +61,17 @@ data BeeminderEnvironment = BeeminderEnvironment
 
 type Beeminder_ = MaybeT (ReaderT BeeminderEnvironment (ResourceT IO))
 newtype Beeminder a = Beeminder { unBeeminder :: Beeminder_ a }
-        deriving (Functor, Applicative, Monad, MonadIO, MonadReader BeeminderEnvironment, MonadThrow, MonadUnsafeIO, MonadResource, MonadBase IO)
+        deriving (Functor, Applicative, Monad, MonadIO, MonadReader BeeminderEnvironment, MonadThrow, MonadResource, MonadBase IO)
 
 -- The following instance (and the "deriving" clause for MonadThrow,
--- MonadUnsafeIO, MonadResource, and MonadBase IO) were copied basically
+-- MonadResource, and MonadBase IO) were copied basically
 -- verbatim from the "dgs" package, and even there they were written just "by
 -- typechecking" rather than with some deep understanding of what's happening.
 -- So it wouldn't surprise me if there's bugs here.
 instance MonadBaseControl IO Beeminder where
-        data StM Beeminder a = StM !(StM Beeminder_ a)
-        liftBaseWith f = Beeminder (liftBaseWith (\g -> f (\(Beeminder m) -> StM <$> g m)))
-        restoreM (StM v) = Beeminder (restoreM v)
+        type StM Beeminder a = Maybe a
+        liftBaseWith f = Beeminder $ liftBaseWith $ \g -> f (g . unBeeminder)
+        restoreM = Beeminder . restoreM
 
 -- | Run a beeminder computation with the given authentication token,
 --   possibly returning a result.
@@ -83,7 +85,7 @@ runBeeminder t m = do
 externalize :: FromJSON a => (Token -> params -> Request) -> params -> Beeminder a
 externalize f p = do
         BeeminderEnvironment { token = t, manager = m } <- ask
-        r <- httpLbs (f t p) {responseTimeout = Nothing} m
+        r <- httpLbs (f t p) {responseTimeout = responseTimeoutNone} m
         Beeminder . MaybeT . return . decode . responseBody $ r
 
 user        :: UserParameters        -> Beeminder User
