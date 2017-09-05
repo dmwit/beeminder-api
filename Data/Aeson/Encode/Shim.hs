@@ -58,7 +58,8 @@ module Data.Aeson.Encode.Shim (encode) where
 
 import Data.Aeson.Types (Value(..))
 import Data.Monoid (mappend)
-import Data.Scientific (Scientific, coefficient, base10Exponent, formatScientificBuilder, FPFormat(Fixed))
+import Data.Scientific (Scientific, coefficient, base10Exponent, FPFormat(Fixed))
+import Data.Text.Lazy.Builder.Scientific (formatScientificBuilder)
 import Data.Text.Lazy.Builder
 import Data.Text.Lazy.Builder.Int (decimal)
 import Numeric (showHex)
@@ -67,7 +68,7 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 
 #if MIN_VERSION_bytestring(0,10,4)
-import Data.Aeson.Encode.ByteString (encode, encodeToByteStringBuilder)
+import Data.Aeson.Encode (encode, encodeToTextBuilder)
 #else
 import Data.Aeson.Types (ToJSON(toJSON))
 import qualified Data.ByteString.Lazy    as BL
